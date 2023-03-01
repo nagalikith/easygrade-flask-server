@@ -12,6 +12,14 @@ env = Environment(
     autoescape=select_autoescape())
 '''
 
+def create_app(test_config=None):
+    # create and configure the app
+    app = Flask(__name__, instance_relative_config=True)
+    app.config.from_mapping(
+        SECRET_KEY='dev',
+        DATABASE=os.path.join(app.instance_path, 'flaskr.sqlite'),
+    )
+
 app = Flask(__name__)
 # The current Limit is 1MB
 app.config['MAX_CONTENT_LENGTH'] = 1 * 1000 * 1000
@@ -21,7 +29,7 @@ ALLOWED_EXTENSIONS = {'py'}
 UPLOAD_FOLDER = '/'
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
-if __name__ == '__hello__':
+if __name__ == '__init__':
     app.run(debug=True)
 
 @app.route('/')
