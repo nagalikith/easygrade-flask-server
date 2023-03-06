@@ -1,11 +1,9 @@
 from markupsafe import escape
-from flask import Flask
+from flask import Flask ,make_response, render_template,redirect, url_for, flash
 from flask import request
 from werkzeug.utils import secure_filename
-from flask import abort, redirect, url_for, flash
-from flask import make_response
-from flask import render_template
 from jinja2 import Environment, PackageLoader, select_autoescape
+import os
 '''
 env = Environment(
     loader=PackageLoader("yourapp"),
@@ -13,7 +11,7 @@ env = Environment(
 '''
 
 ALLOWED_EXTENSIONS = {'py'}
-UPLOAD_FOLDER = '/'
+UPLOAD_FOLDER = '/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/src/static/upload-file'
 
 
 def app_config():
@@ -48,22 +46,26 @@ def create_app(test_config=None):
 
     @app.route('/upload', methods=['GET', 'POST'])
     def upload_file():
+
         if request.method == 'POST':
             flash('Upload Started')
             # check if the post request has the file part
             if 'file' not in request.files:
                 flash('No file part')
                 return redirect(request.url)
-            file = request.files['file']
+            submission = request.files['file']
+
             # If the user does not select a file, the browser submits an
             # empty file without a filename.
-            if file.filename == '':
+            
+            if submission.filename == '':
                 flash('No selected file')
                 return redirect(request.url)
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                return redirect(url_for('download_file', name=filename))
+            
+            if submission and allowed_file(submission.filename):
+                filename = secure_filename(submission.filename)
+                submission.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                return redirect(url_for('upload_file', name=filename))
         return '''
         <!doctype html>
         <title>Upload new File</title>
@@ -84,18 +86,12 @@ def create_app(test_config=None):
             "image": url_for("user_image", filename=user.image),
         }
 
-    @app.route("/users")
-    def users_api():
-        users = get_all_users()
-        return [user.to_json() for user in users]
-
     #Errors
     @app.errorhandler(404)
     def not_found(error):
         resp = make_response(render_template('error.html'), 404)
         resp.headers['X-Something'] = 'A value'
         return resp
-    
     return app
 
 # Upload a File
