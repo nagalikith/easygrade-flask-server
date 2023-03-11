@@ -3,6 +3,7 @@ from flask import Flask ,make_response, render_template,redirect, url_for, flash
 from flask import request
 from werkzeug.utils import secure_filename
 from jinja2 import Environment, PackageLoader, select_autoescape
+from flask_cors import CORS
 import os
 '''
 env = Environment(
@@ -27,6 +28,7 @@ def app_config():
 def create_app(test_config=None):
 
     app = app_config()
+    CORS(app)
     if __name__ == '__init__':
         app.run(debug=True)
 
@@ -34,24 +36,14 @@ def create_app(test_config=None):
     def index():
         return 'Index Page'
 
-    @app.route('/hello')
-    def hello():
-        app.logger.debug('A value for debugging')
-        app.logger.warning('A warning occurred (%d apples)', 42)
-        return 'Hello, World'
-
-    @app.route("/<name>")
-    def name(name):
-        return f"Hello, {escape(name)}!"
-
     @app.route('/upload', methods=['GET', 'POST'])
     def upload_file():
-
         if request.method == 'POST':
-            flash('Upload Started')
+            print('Upload Started')
+            print(request)
             # check if the post request has the file part
             if 'file' not in request.files:
-                flash('No file part')
+                print('No file part')
                 return redirect(request.url)
             submission = request.files['file']
 
@@ -59,12 +51,13 @@ def create_app(test_config=None):
             # empty file without a filename.
             
             if submission.filename == '':
-                flash('No selected file')
+                print('No selected file')
                 return redirect(request.url)
             
             if submission and allowed_file(submission.filename):
                 filename = secure_filename(submission.filename)
                 submission.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                print("I am here")
                 return redirect(url_for('upload_file', name=filename))
         return '''
         <!doctype html>
@@ -92,6 +85,7 @@ def create_app(test_config=None):
         resp = make_response(render_template('error.html'), 404)
         resp.headers['X-Something'] = 'A value'
         return resp
+    app.run(ssl_context="adhoc")
     return app
 
 # Upload a File
