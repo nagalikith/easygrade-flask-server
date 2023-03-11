@@ -1,11 +1,9 @@
 from markupsafe import escape
-from flask import Flask
+from flask import Flask ,make_response, render_template,redirect, url_for, flash
 from flask import request
 from werkzeug.utils import secure_filename
-from flask import abort, redirect, url_for, flash
-from flask import make_response
-from flask import render_template
 from jinja2 import Environment, PackageLoader, select_autoescape
+from flask_cors import CORS
 import os
 '''
 env = Environment(
@@ -13,9 +11,8 @@ env = Environment(
     autoescape=select_autoescape())
 '''
 
-ALLOWED_EXTENSIONS = {'py', "svg"}
+ALLOWED_EXTENSIONS = {'py'}
 UPLOAD_FOLDER = '.'
-
 
 def app_config():
     app = Flask(__name__,instance_relative_config=True)
@@ -31,6 +28,8 @@ def create_app(app=None, test_config=None):
 
     if (app == None):
       app = app_config()
+    CORS(app)
+
     if __name__ == '__init__':
         app.run(debug=True)
 
@@ -38,36 +37,24 @@ def create_app(app=None, test_config=None):
     def index():
         return 'Index Page'
 
-    @app.route('/hello')
-    def hello():
-        app.logger.debug('A value for debugging')
-        app.logger.warning('A warning occurred (%d apples)', 42)
-        return 'Hello, World'
-
-    @app.route("/<name>")
-    def name(name):
-        return f"Hello, {escape(name)}!"
-
     @app.route('/upload', methods=['GET', 'POST'])
     def upload_file():
         if request.method == 'POST':
-            print("Reuqest : {}".format(request))
-            print('Upload Started')
+
             # check if the post request has the file part
             if 'file' not in request.files:
-                print('No file part')
+                flash('No file part')
                 return redirect(request.url)
+
             file = request.files['file']
-            print("file : {}".format(file))
             # If the user does not select a file, the browser submits an
             # empty file without a filename.
             if file.filename == '':
-                print('No selected file')
+                flash('No selected file')
                 return redirect(request.url)
             if file and allowed_file(file.filename):
                 filename = secure_filename(file.filename)
                 file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                print("I was successfull")
                 return {"Upload Status": "Successfull"}
         return '''
         <!doctype html>
@@ -89,18 +76,12 @@ def create_app(app=None, test_config=None):
             "image": url_for("user_image", filename=user.image),
         }
 
-    @app.route("/users")
-    def users_api():
-        users = get_all_users()
-        return [user.to_json() for user in users]
-
     #Errors
     @app.errorhandler(404)
     def not_found(error):
         resp = make_response(render_template('error.html'), 404)
         resp.headers['X-Something'] = 'A value'
         return resp
-    
     return app
 
 # Upload a File
