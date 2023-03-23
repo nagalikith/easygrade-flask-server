@@ -1,13 +1,10 @@
 from flask_login import LoginManager
+from flask import Flask, is_safe_url
 login_manager = LoginManager()
 
 login_manager.init_app(app)
-
 @app.route('/login', methods=['GET', 'POST'])
 def login():
-    # Here we use a class of some kind to represent and validate our
-    # client-side form data. For example, WTForms is a library that will
-    # handle this for us, and we use a custom LoginForm to validate.
     form = LoginForm()
     if form.validate_on_submit():
         # Login and validate the user.
