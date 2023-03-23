@@ -12,23 +12,24 @@ env = Environment(
 '''
 
 ALLOWED_EXTENSIONS = {'py'}
-UPLOAD_FOLDER = '/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/src/static/upload-file'
-
+UPLOAD_FOLDER = '.'
 
 def app_config():
     app = Flask(__name__,instance_relative_config=True)
     # The current Limit is 1MB
-    app.config['MAX_CONTENT_LENGTH'] = 1 * 1000 * 1000
+    app.config['MAX_CONTENT_LENGTH'] = 1 * 1024 * 1024
     app.config['SECRET_KEY'] = 'Test'
     app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://postgres:password@localhost/flasksql'
     app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
     app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
     return app
 
-def create_app(test_config=None):
+def create_app(app=None, test_config=None): 
 
-    app = app_config()
+    if (app == None):
+      app = app_config()
     CORS(app)
+
     if __name__ == '__init__':
         app.run(debug=True)
 
@@ -39,26 +40,22 @@ def create_app(test_config=None):
     @app.route('/upload', methods=['GET', 'POST'])
     def upload_file():
         if request.method == 'POST':
-            print('Upload Started')
-            print(request)
+
             # check if the post request has the file part
             if 'file' not in request.files:
-                print('No file part')
+                flash('No file part')
                 return redirect(request.url)
-            submission = request.files['file']
 
+            file = request.files['file']
             # If the user does not select a file, the browser submits an
             # empty file without a filename.
-            
-            if submission.filename == '':
-                print('No selected file')
+            if file.filename == '':
+                flash('No selected file')
                 return redirect(request.url)
-            
-            if submission and allowed_file(submission.filename):
-                filename = secure_filename(submission.filename)
-                submission.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                print("I am here")
-                return redirect(url_for('upload_file', name=filename))
+            if file and allowed_file(file.filename):
+                filename = secure_filename(file.filename)
+                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+                return {"Upload Status": "Successfull"}
         return '''
         <!doctype html>
         <title>Upload new File</title>
@@ -85,10 +82,14 @@ def create_app(test_config=None):
         resp = make_response(render_template('error.html'), 404)
         resp.headers['X-Something'] = 'A value'
         return resp
-    app.run(ssl_context="adhoc")
     return app
 
 # Upload a File
 def allowed_file(filename):
     return '.' in filename and \
         filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
+
+if __name__ == "__main__":
+  app = app_config()
+  create_app(app)
+  app.run(debug=True)

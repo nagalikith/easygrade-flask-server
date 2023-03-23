@@ -1,2 +1,1 @@
-A = []
-B = "ABC"
+print("Hello World")
