@@ -1,15 +1,8 @@
-from markupsafe import escape
-from flask import Flask ,make_response, render_template,redirect, url_for, flash
-from flask import request
-from werkzeug.utils import secure_filename
-from jinja2 import Environment, PackageLoader, select_autoescape
+import flask
+import route_exec_code as rec
+import import_helper as ih
+from flask import Flask ,make_response, render_template,redirect, url_for
 from flask_cors import CORS
-import os
-'''
-env = Environment(
-    loader=PackageLoader("yourapp"),
-    autoescape=select_autoescape())
-'''
 
 ALLOWED_EXTENSIONS = {'py'}
 UPLOAD_FOLDER = '.'
@@ -30,6 +23,8 @@ def create_app(app=None, test_config=None):
       app = app_config()
     CORS(app)
 
+    app.register_blueprint(rec.bp)
+
     if __name__ == '__init__':
         app.run(debug=True)
 
@@ -37,34 +32,6 @@ def create_app(app=None, test_config=None):
     def index():
         return 'Index Page'
 
-    @app.route('/upload', methods=['GET', 'POST'])
-    def upload_file():
-        if request.method == 'POST':
-
-            # check if the post request has the file part
-            if 'file' not in request.files:
-                flash('No file part')
-                return redirect(request.url)
-
-            file = request.files['file']
-            # If the user does not select a file, the browser submits an
-            # empty file without a filename.
-            if file.filename == '':
-                flash('No selected file')
-                return redirect(request.url)
-            if file and allowed_file(file.filename):
-                filename = secure_filename(file.filename)
-                file.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
-                return {"Upload Status": "Successfull"}
-        return '''
-        <!doctype html>
-        <title>Upload new File</title>
-        <h1>Upload new File</h1>
-        <form method=post enctype=multipart/form-data>
-        <input type=file name=file>
-        <input type=submit value=Upload>
-        </form>
-        '''
 
     # User Stuff
     @app.route("/me")
@@ -84,10 +51,6 @@ def create_app(app=None, test_config=None):
         return resp
     return app
 
-# Upload a File
-def allowed_file(filename):
-    return '.' in filename and \
-        filename.rsplit('.', 1)[1].lower() in ALLOWED_EXTENSIONS
 
 if __name__ == "__main__":
   app = app_config()
