@@ -1,13 +1,13 @@
 # easygrade-flask-server
 
 ### Initial Setup
-`mkdir submissions` (Used for submission)
+`mkdir submissions` (in the apps root directory)
 
-set `PYTHONPATH` environment variable to `py_lib/helper_libs` (check [this](https://phoenixnap.com/kb/set-environment-variable-mac#ftoc-heading-5) article for mac)
+set `PYTHONPATH` environment variable to `py_lib/helper_libs` directory (check [this](https://phoenixnap.com/kb/set-environment-variable-mac#ftoc-heading-5) article for mac)
 
 change `ROOT_PATH` in `py_lib/helper_libs/import_helper.py` to the absolute path of the app's directory
 
-make `.env.json` file from the `example.env.json` file
+make `.env.json` file from the `example.env.json` file located in `py_lib/helper_libs`
 
 To run the app type 
 
