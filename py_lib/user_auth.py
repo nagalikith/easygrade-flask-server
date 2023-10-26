@@ -1,5 +1,6 @@
 ## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
-
+from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity, verify_jwt_in_request
+from flask_restful import Api, Resource
 import import_helper as ih
 import passlib.hash as ph
 import flask
@@ -9,43 +10,38 @@ import logging
 
 sha256 = ph.pbkdf2_sha256
 
+app = flask.Flask(__name__)
+api = Api(app)
+
+# Configure JWT
+app.config['JWT_SECRET_KEY'] = '8B{ghze1Tuse$r>l2Cynvpc%@9mjoI9&lQ*d>sxbxbdgPbbxPF<hiWlK\\1Za<,r%'
+jwt = JWTManager(app)
+
+@app.route('/login', methods=['POST'])
+def login():
+    data = flask.request.get_json()
+    username = data.get('username')
+    password = data.get('password')
+
+    auth_result = validate_login(username, password)
+
+    if auth_result['status']:
+        return flask.jsonify({"access_token": auth_result['access_token']})
+    else:
+        return flask.jsonify({"message": "Invalid credentials"}), 401
+
 def handle_login(func):
-  
-  @functools.wraps(func)
-  def wrapper(*args, **kwargs):
-    
-    try:
+    @functools.wraps(func)
+    def wrapper(*args, **kwargs):
+        try:
+            verify_jwt_in_request()
+            kwargs["userid"] = get_jwt_identity()
+            return func(*args, **kwargs)
+        except Exception as e:
+            traceback.print_exc()
+            return flask.jsonify({"message": "Access token is missing or invalid"}), 401
 
-      ver_info = ih.libs["db_userop"].verify_eph_cred(
-        flask.session["userid"],
-        flask.session["eph_pass"]
-      )
-      print("Ver INFO: ", ver_info)
-      
-      if (ver_info["status"]):
-        upd_info = ver_info["upd_info"]
-        
-        if (upd_info["action"] == "log off"):
-          del flask.session["userid"]
-          del flask.session["eph_pass"]
-
-          return flask.redirect(flask.url_for("user_rel.get_login_page"))
-
-        if (upd_info["update"]):
-          flask.session["userid"] = upd_info["cred"]["userid"]
-          flask.session["eph_pass"] = upd_info["cred"]["eph_pass"]
-
-        kwargs["userid"] = flask.session.get("userid")
-        return func(*args, **kwargs)
-
-      else:
-        return flask.redirect(flask.url_for("user_rel.get_login_page"))
-
-    except Exception as e:
-      traceback.print_exc()
-      return flask.redirect(flask.url_for("user_rel.get_login_page"))
-  
-  return wrapper
+    return wrapper
 
 def get_hash_pass(password):
   return (
@@ -53,12 +49,15 @@ def get_hash_pass(password):
   )
 
 def validate_login(username, password):
-  hashed_passwd = ih.libs["db_userop"].get_hash_passwd(username=username)
-  res = {"status": sha256.verify(password, hashed_passwd)}
-  if (res["status"]):
-    eph_cred = ih.libs["db_userop"].create_cred(username)
-    res["eph_cred"] = eph_cred
-  return res
+    hashed_passwd = ih.libs["db_userop"].get_hash_passwd(username=username)
+    is_valid = sha256.verify(password, hashed_passwd)
+
+    if is_valid:
+        eph_cred = ih.libs["db_userop"].create_cred(username)
+        access_token = create_access_token(identity=username)
+        return {"status": True, "eph_cred": eph_cred, "access_token": access_token}
+    else:
+        return {"status": False}
 
 def authenticate_using_password(userid, password):
   hashed_passwd = ih.libs["db_userop"].get_hash_passwd(userid=userid)
