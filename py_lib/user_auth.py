@@ -10,25 +10,7 @@ import logging
 
 sha256 = ph.pbkdf2_sha256
 
-app = flask.Flask(__name__)
-api = Api(app)
 
-# Configure JWT
-app.config['JWT_SECRET_KEY'] = '8B{ghze1Tuse$r>l2Cynvpc%@9mjoI9&lQ*d>sxbxbdgPbbxPF<hiWlK\\1Za<,r%'
-jwt = JWTManager(app)
-
-@app.route('/login', methods=['POST'])
-def login():
-    data = flask.request.get_json()
-    username = data.get('username')
-    password = data.get('password')
-
-    auth_result = validate_login(username, password)
-
-    if auth_result['status']:
-        return flask.jsonify({"access_token": auth_result['access_token']})
-    else:
-        return flask.jsonify({"message": "Invalid credentials"}), 401
 
 def handle_login(func):
     @functools.wraps(func)

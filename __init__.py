@@ -2,7 +2,7 @@ import flask
 import route_exec_code as rec
 import import_helper as ih
 from flask import Flask ,make_response, render_template,redirect, url_for
-from flask_cors import CORS
+#from flask_cors import CORS
 
 ALLOWED_EXTENSIONS = {'py'}
 UPLOAD_FOLDER = '.'

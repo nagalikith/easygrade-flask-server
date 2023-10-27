@@ -2,7 +2,7 @@ import import_helper as ih
 from flask import Blueprint, request, jsonify
 from flask_restful import Api, Resource
 
-bp = Blueprint("user_rel", __name__, template_folder="templates", static_folder="static")
+bp = Blueprint("user_rel_api", __name__)
 
 # Create an API object
 api = Api(bp)
