@@ -8,6 +8,6 @@ class LangPython(ih.libs["Lang"].Lang):
 
   #returns the command to execute the file
   def exec_statement(self):
-    return "python \"{}\"".format(
+    return "python -E \"{}\"".format(
       self.get_full_path(self.file_name)
     )
