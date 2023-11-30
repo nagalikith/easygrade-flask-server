@@ -1,7 +1,7 @@
 import flask
 import json
 
-from flask_jwt_extended import JWTManager, create_access_token, verify_jwt_in_request
+from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity, jwt_required, verify_jwt_in_request
 import import_helper as ih
 from py_lib.user_auth import validate_login
 
@@ -9,7 +9,7 @@ import route_assn_rel as rar
 import route_exec_code as rec
 import route_user_rel as rur
 import route_sec_rel as rsr
-from api import user_api
+from api import user_api,assignment_api,section_api, exec_code_api
 
 def create_app():
   app = flask.Flask(__name__)
@@ -19,6 +19,9 @@ def create_app():
   #app.register_blueprint(rur.bp)
   app.register_blueprint(rsr.bp)
   app.register_blueprint(user_api.bp)
+  app.register_blueprint(assignment_api.bp)
+  app.register_blueprint(section_api.bp)
+  app.register_blueprint(exec_code_api.bp)
   # Configure JWT
   app.config['JWT_SECRET_KEY'] = '8B{ghze1Tuse$r>l2Cynvpc%@9mjoI9&lQ*d>sxbxbdgPbbxPF<hiWlK\\1Za<,r%'
   jwt = JWTManager(app)
@@ -38,14 +41,14 @@ def create_app():
   @ih.handle_login
   def get_home_page():
     try:
-        verify_jwt_in_request()
+        current_user = get_jwt_identity()
         pg_info = {}
         ih.libs["form_helper"].add_codes(flask.session, pg_info)
 
         link_names = ["My Account", "Sections"]
         links_flask = ["user_rel.get_account_page", "sec_rel.get_section_list_page"]
 
-        if ih.libs["user_auth"].is_admin(flask.current_identity):
+        if ih.libs["user_auth"].is_admin(current_user):
             link_names.append("Users")
             links_flask.append("user_rel.get_users_page")
 

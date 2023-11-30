@@ -4,9 +4,9 @@ from flask import Flask, Blueprint
 from flask_restful import Api, Resource, reqparse
 
 app = Flask(__name__)
-
+bp = Blueprint("assignment_api", __name__)
 # Create an API object
-api = Api(app)
+api = Api(bp)
 
 class CreateAssignment(Resource):
     def get(self):

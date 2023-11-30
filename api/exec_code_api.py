@@ -6,10 +6,10 @@ from flask_restful import Api, Resource, reqparse
 
 app = Flask(__name__)
 
-# Create an API object
-api = Api(app)
+bp = Blueprint("exec_code_api", __name__, template_folder="templates", static_folder="static")
 
-bp = Blueprint("exec_code", __name__, template_folder="templates", static_folder="static")
+# Create an API object
+api = Api(bp)
 
 class UploadPage(Resource):
     def get(self):
