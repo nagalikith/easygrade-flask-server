@@ -1,5 +1,26 @@
 # easygrade-flask-server
 
+project_root/
+│
+├── data/
+│   └── dataset.py            # Code to handle datasets, loading, augmentation, etc.
+│
+├── models/
+│   ├── vit_encoder.py        # Definition of the pre-trained Vision Transformer (ViT) encoder
+│   ├── decoder.py            # Definition of the pre-trained text decoder (e.g., GPT, BERT, etc.)
+│   └── encoder_decoder.py    # Combining the pre-trained encoder and decoder
+│
+├── utils/
+│   └── utils.py              # Utility functions like image preprocessing, decoding, etc.
+│
+├── configs/
+│   └── config.yaml           # Configuration files for the model, training, paths, etc.
+│
+├── train.py                  # Script to train the model
+├── inference.py              # Script to perform inference
+├── requirements.txt          # Dependencies (e.g., transformers, torch, etc.)
+└── README.md  
+
 ### Initial Setup
 `mkdir submissions` (in the apps root directory)
 

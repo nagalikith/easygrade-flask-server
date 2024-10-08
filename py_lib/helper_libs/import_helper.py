@@ -1,88 +1,72 @@
 import json
 import sys
+import os
 
-#for easy import of libraries and fetching of environment variables
-
-#change this to the root document of your project
-ROOT_PATH = "/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/"
-
+# Define the root path of your project. You can make this dynamic or environment-based.
+ROOT_PATH = os.path.abspath("/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/")
 sys.path.insert(0, ROOT_PATH)
 
-#will be used to store the imported libraries as dictionaries
+# Dictionary to store dynamically imported libraries
 libs = {}
 
-#loads the environment variables
-f = open("{}/py_lib/helper_libs/env.json".format(
-  ROOT_PATH
-))
-env = json.load(f)
-f.close()
+# Load environment variables
+ENV_PATH = os.path.join(ROOT_PATH, "py_lib/helper_libs/env.json")
 
-# method to get environment variables
+try:
+    with open(ENV_PATH, 'r') as f:
+        env = json.load(f)
+except FileNotFoundError:
+    print(f"Error: Environment file not found at {ENV_PATH}")
+    sys.exit(1)
+except json.JSONDecodeError:
+    print(f"Error: Failed to parse the environment file at {ENV_PATH}")
+    sys.exit(1)
+
+# Function to get environment variables
 def get_env_val(var_name, return_type=None):
-  res = None
-  if (var_name.startswith("PATH")):
-    res = "{}{}".format(
-      ROOT_PATH,
-      env.get(var_name)
-    )
-  else:
-    res = (env.get(var_name))
+    value = env.get(var_name)
 
-  if (return_type == "json" and type(res) == dict):
-    return (json.dumps(res))
-  else:
-    return (res)
+    # Prefix ROOT_PATH if it's a PATH variable
+    if var_name.startswith("PATH"):
+        value = os.path.join(ROOT_PATH, value) if value else None
 
-import py_lib.hex_rel as hex_rel
-libs["hex_rel"] = hex_rel
+    # Handle return types (e.g., JSON)
+    if return_type == "json" and isinstance(value, dict):
+        return json.dumps(value)
+    return value
 
-import py_lib.form_helper as form_helper
-libs["form_helper"] = form_helper
+# Dynamic importing of libraries and assigning them to `libs` dictionary
+def import_lib(module_name, alias=None):
+    try:
+        module = __import__(module_name, fromlist=[''])
+        libs[alias if alias else module_name] = module
+    except ImportError as e:
+        print(f"Error importing {module_name}: {str(e)}")
 
-import py_lib.user_auth as user_auth
-libs["user_auth"] = user_auth
+# List of libraries to import, in (module_path, alias) format
+lib_imports = [
+    ("py_lib.hex_rel", "hex_rel"),
+    ("py_lib.form_helper", "form_helper"),
+    ("py_lib.user_auth", "user_auth"),
+    ("py_lib.aws_rel.s3_rel", "s3_rel"),
+    ("py_lib.db_libs.db_connect", "db_connect"),
+    ("py_lib.db_libs.db_schema", "db_schema"),
+    ("py_lib.db_libs.db_userop", "db_userop"),
+    ("py_lib.db_libs.db_secop", "db_secop"),
+    ("py_lib.fileop_libs.fileop_helper", "fileop_helper"),
+    ("py_lib.fileop_libs.subm_fileop", "subm_fileop"),
+    ("py_lib.fileop_libs.assn_fileop", "assn_fileop"),
+    ("py_lib.run_lang.Lang", "Lang"),
+    ("py_lib.run_lang.LangCPP", "LangCPP"),
+    ("py_lib.run_lang.LangC", "LangC"),
+    ("py_lib.run_lang.LangPython", "LangPython"),
+    ("py_lib.run_lang.LangRuby", "LangRuby"),
+    ("py_lib.run_lang.run_code", "run_code"),
+]
 
-import py_lib.aws_rel.s3_rel as s3_rel
-libs["s3_rel"] = s3_rel
+# Dynamically import all listed libraries
+for lib_path, lib_alias in lib_imports:
+    import_lib(lib_path, lib_alias)
 
-import py_lib.db_libs.db_connect as db_connect
-libs["db_connect"] = db_connect
-
-import py_lib.db_libs.db_schema as db_schema
-libs["db_schema"] = db_schema
-
-import py_lib.db_libs.db_userop as db_userop
-libs["db_userop"] = db_userop
-
-import py_lib.db_libs.db_secop as db_secop
-libs["db_secop"] = db_secop
-
-import py_lib.fileop_libs.fileop_helper as fileop_helper
-libs["fileop_helper"] = fileop_helper
-
-import py_lib.fileop_libs.subm_fileop as subm_fileop
-libs["subm_fileop"] = subm_fileop
-
-import py_lib.fileop_libs.assn_fileop as assn_fileop
-libs["assn_fileop"] = assn_fileop
-
-import py_lib.run_lang.Lang as Lang
-libs["Lang"] = Lang
-
-import py_lib.run_lang.LangCPP as LangCPP
-libs["LangCPP"] = LangCPP
-
-import py_lib.run_lang.LangC as LangC
-libs["LangC"] = LangC
-
-import py_lib.run_lang.LangPython as LangPython
-libs["LangPython"] = LangPython
-
-import py_lib.run_lang.LangRuby as LangRuby
-libs["LangRuby"] = LangRuby
-
-import py_lib.run_lang.run_code as run_code
-libs["run_code"] = run_code
-
-handle_login = user_auth.handle_login
+# Example usage: user_auth is loaded and accessible in libs
+handle_login = libs["user_auth"].handle_login

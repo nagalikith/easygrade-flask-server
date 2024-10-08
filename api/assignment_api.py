@@ -8,6 +8,8 @@ bp = Blueprint("assignment_api", __name__)
 # Create an API object
 api = Api(bp)
 
+SUPP_LANG = ih.get_env_val("SUPP_LANG")
+
 class CreateAssignment(Resource):
     def get(self):
         pg_info = {

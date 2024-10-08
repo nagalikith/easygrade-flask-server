@@ -1,0 +1,28 @@
+graph TD
+    subgraph "Enhanced Encoder"
+        I[Image Input] --> VIT[Vision Transformer]
+        VIT --> PE1[Positional Encoding]
+        PE1 --> MT1[Multi-Head Self Attention]
+        MT1 --> LN1[Layer Normalization]
+        LN1 --> FFN1[Feed Forward Network]
+        FFN1 --> DO1[Dropout]
+    end
+
+    subgraph "Enhanced Decoder"
+        TI[Token Input] --> E[Token Embedding]
+        E --> PE2[Positional Encoding]
+        PE2 --> MT2[Masked Multi-Head Self Attention]
+        MT2 --> LN2[Layer Normalization]
+        LN2 --> CA[Cross Attention with Encoder]
+        CA --> LN3[Layer Normalization]
+        LN3 --> FFN2[Feed Forward Network]
+        FFN2 --> DO2[Dropout]
+    end
+
+    subgraph "Output Processing"
+        DO2 --> LN4[Final Layer Norm]
+        LN4 --> LP[Linear Projection]
+        LP --> SM[Softmax]
+    end
+
+    DO1 -.-> CA
