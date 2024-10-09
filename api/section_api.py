@@ -6,7 +6,7 @@ from flask_restful import Api, Resource, reqparse
 app = Flask(__name__)
 
 
-bp = Blueprint("section_api")
+bp = Blueprint("section_api", __name__)
 
 api = Api(bp)
 class SectionList(Resource):

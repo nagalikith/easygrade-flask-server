@@ -3,7 +3,7 @@ import sys
 import os
 
 # Define the root path of your project. You can make this dynamic or environment-based.
-ROOT_PATH = os.path.abspath("/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/")
+ROOT_PATH = os.path.abspath("/home/snaga/easygrade-flask-server")
 sys.path.insert(0, ROOT_PATH)
 
 # Dictionary to store dynamically imported libraries
