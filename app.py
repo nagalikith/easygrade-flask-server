@@ -1,6 +1,7 @@
 import flask
 import json
 
+from flask_cors import CORS, cross_origin
 from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity, jwt_required, verify_jwt_in_request
 import import_helper as ih
 from py_lib.user_auth import validate_login
@@ -13,6 +14,7 @@ from api import user_api,assignment_api,section_api, exec_code_api
 
 def create_app():
   app = flask.Flask(__name__)
+  CORS(app, supports_credentials=True, origins="http://localhost:3000")
   app.secret_key = "7A{ghze1Tuse$r>l2Cynvpc%@9mjoI9&lQ*d>sxbxbdgPbbxPF<hiWlK\\1Za<,r%"
   app.register_blueprint(rec.bp)
   app.register_blueprint(rar.bp)
@@ -26,15 +28,32 @@ def create_app():
   app.config['JWT_SECRET_KEY'] = '8B{ghze1Tuse$r>l2Cynvpc%@9mjoI9&lQ*d>sxbxbdgPbbxPF<hiWlK\\1Za<,r%'
   jwt = JWTManager(app)
 
-  @app.route('/login', methods=['POST'])
+  @app.route('/login', methods=['POST', 'OPTIONS'])
   def login():
+    if flask.request.method == 'OPTIONS':  # Handle preflight request
+            response = flask.make_response()
+            response.headers.add('Access-Control-Allow-Origin', 'http://localhost:3000')
+            response.headers.add('Access-Control-Allow-Credentials', 'true')
+            response.headers.add('Access-Control-Allow-Methods', 'POST, OPTIONS')
+            response.headers.add('Access-Control-Allow-Headers', 'Content-Type, Authorization')
+            return response, 200
+    
+    #Post Request
     data = flask.request.get_json()
     username = data.get('username')
     password = data.get('password')
 
     if validate_login(username, password):
-        access_token = create_access_token(identity=username)
-        return flask.jsonify({"access_token": access_token}), 200
+      access_token = create_access_token(identity=username)
+            
+      # Create the response object
+      response = flask.make_response({"message": "Login successful"})
+      # Set the JWT as an HttpOnly cookie
+      response.set_cookie('access_token', access_token, httponly=True, secure=False, samesite='Lax')  
+      # For production, use `secure=True` to only send the cookie over HTTPS
+      response.headers.add('Access-Control-Allow-Credentials', 'true')
+
+      return response, 200
     else:
         return flask.jsonify({"message": "Invalid credentials"}), 401
   @app.route("/")

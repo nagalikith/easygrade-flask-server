@@ -1,5 +1,4 @@
 import flask
-import import_helper as ih
 from flask import Flask ,make_response, render_template,redirect, url_for
 from flask_cors import CORS
 
@@ -17,10 +16,8 @@ def app_config():
     return app
 
 def create_app(app=None, test_config=None): 
-
     if (app == None):
       app = app_config()
-    CORS(app)
 
     app.register_blueprint(rec.bp)
 
