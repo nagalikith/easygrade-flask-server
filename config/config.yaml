@@ -1,0 +1,12 @@
+model:
+  encoder: "google/vit-base-patch16-224"
+  decoder: "gpt2"
+  
+training:
+  epochs: 10
+  batch_size: 8
+  learning_rate: 5e-5
+
+paths:
+  train_data: "./data/train_images"
+  val_data: "./data/val_images"

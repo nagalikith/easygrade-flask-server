@@ -96,3 +96,14 @@ This endpoint returns all courses for a given user.
 ### /api/v1.0/users/<int:user_id>/assignments
 
 This endpoint returns all assignments for a given user
+
+
+
+
+Debugging CMD:
+
+< Access-Control-Allow-Credentials: true
+< Access-Control-Allow-Origin: http://localhost:3000
+< Access-Control-Allow-Credentials: true
+
+curl -v -X POST http://127.0.0.1:5000/login \-H "Content-Type: application/json" \-H "Origin: http://localhost:3000" \-d '{"username": "admin", "password": "password"}' \--cookie-jar cookies.txt

@@ -1,5 +1,5 @@
 import json
-import import_helper as ih
+import utils.import_helper as ih
 from flask import Flask, Blueprint
 from flask_restful import Api, Resource, reqparse
 

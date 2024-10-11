@@ -1,6 +1,6 @@
 import flask
 import json
-import import_helper as ih
+import utils.import_helper as ih
 
 bp = flask.Blueprint("assign_op", __name__, template_folder="templates", static_folder="static")
 

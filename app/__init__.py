@@ -1,6 +1,5 @@
 import flask
 from flask import Flask ,make_response, render_template,redirect, url_for
-from flask_cors import CORS
 
 ALLOWED_EXTENSIONS = {'py'}
 UPLOAD_FOLDER = '.'
