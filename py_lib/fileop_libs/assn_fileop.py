@@ -1,6 +1,7 @@
 import import_helper as ih
 import threading
 
+
 assn_dir_path = ih.get_env_val("PATH_ASSN_DIR_PAR")
 assn_info_dict = {}
 
