@@ -54,8 +54,8 @@ def validate_login(username, password):
 
     if is_valid:
         eph_cred = ih.libs["db_userop"].create_cred(username)
-        access_token = create_access_token(identity=username)
-        return {"status": True, "eph_cred": eph_cred, "access_token": access_token}
+        user_id = ih.libs["db_userop"].get_userid(username)
+        return {"status": True, "user_id": user_id}
     else:
         return {"status": False}
 
