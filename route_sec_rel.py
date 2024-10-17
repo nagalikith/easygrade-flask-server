@@ -1,36 +1,52 @@
 ## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
 
-import import_helper as ih
+import py_lib.helper_libs.import_helper as ih
 import flask 
 import json
+from flask_jwt_extended import jwt_required, get_jwt_identity
 
 bp = flask.Blueprint("sec_rel", __name__, template_folder="templates", static_folder="static")
 
 @bp.route("/sections")
-@ih.handle_login
-def get_section_list_page(userid):
+@jwt_required()
+def get_sections():
+    try:
+        userid = flask.request.cookies.get('user_id_cookie')
+        # Get sections based on user role
+        print(type(userid))
+        if ih.libs["user_auth"].is_admin(userid):
+            data = ih.libs["db_secop"].admin_sectionview()
+        else:
+            data = ih.libs["db_secop"].get_sectionview(userid)
+        
+        # Transform sections into the required format
+        formatted_sections = {
+            "status": True,
+            "sections": []
+        }
+        
+        for i in range(len(data['section_id'])):
+          section_data = {
+              "title": data['section_name'][i],  # Use section name as the title
+              "subtitle": data['section_code'][i],  # Use section code as the subtitle
+              "assignmentCount": 0,  # Initialize with 0 or fetch from a relevant source
+              "sectionId": data['section_id'][i],
+              "term": "fall2023"  # Assuming a fixed term; modify as needed
+            }
+          formatted_sections["sections"].append(section_data)
 
-  pg_info = {}
-  
-  sect_info = None
-
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-  pg_info["endpoint_section"] = flask.url_for("sec_rel.get_section_page")
-
-  if (ih.libs["user_auth"].is_admin(userid)): 
-    sect_info = ih.libs["db_secop"].admin_sectionview()
-    pg_info["links"] = {"Create Section": flask.url_for("sec_rel.get_create_section_page")}
-  else:
-    sect_info = ih.libs["db_secop"].get_sectionview(userid)
-  pg_info["section_info"] = sect_info
-  return flask.render_template(
-    "sections.html", pg_info=json.dumps(pg_info)
-  )
+        return flask.jsonify(formatted_sections)
+        
+    except Exception as e:
+        return flask.jsonify({
+            "status": False,
+            "error": str(e)
+        }), 500
 
 @bp.route("/section")
-@ih.handle_login
-def get_section_page(userid):
-  
+@jwt_required()
+def get_section_page():
+  userid = flask.request.cookies.get('user_id_cookie')
   pg_info = {}
 
   try:
@@ -65,7 +81,7 @@ def get_section_page(userid):
     )
   except:
     return flask.redirect(
-      flask.url_for("sec_rel.get_section_list_page")
+      flask.url_for("sec_rel.get_section_page")
     )
 
 @bp.route("/section/users")

@@ -4,7 +4,7 @@ import sys
 #for easy import of libraries and fetching of environment variables
 
 #change this to the root document of your project
-ROOT_PATH = "/Users/nagalikiths/Desktop/Easy Grade/easygrade-flask-server/"
+ROOT_PATH = "/home/snaga/easygrade-flask-server"
 
 sys.path.insert(0, ROOT_PATH)
 

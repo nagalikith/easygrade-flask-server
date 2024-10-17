@@ -6,6 +6,9 @@ import time
 
 tables_info = ih.libs["db_schema"].tables_info
 
+def get_userid(username):
+  return get_user_info(username=username, cols=["user_id"])[0]
+
 
 def admin_userview(userid):
   col_names_userinfo = ["username", "email", "reg_epoch"]
@@ -229,5 +232,29 @@ def upd_passwd(userid, password):
   stmt = sa.update(tables_info["user_info"]["table"]).where(tables_info["user_info"]["col"]["user_id"] == userid).values(hashed_password=hashed_passwd)
 
   ih.libs["db_connect"].run_stmt(stmt)
+
+def create_assignment(author_id, title, body, start_epoch, end_epoch, url):
+    # Ensure the necessary parameters are provided
+    if not all([author_id, title, body, start_epoch, end_epoch, url]):
+        raise ValueError("All parameters must be provided.")
+
+    # Create the insert statement for the assignments table
+    stmt = sa.insert(tables_info["assn"]["table"]).values(
+        author_id=author_id,
+        assn_title=title,
+        assn_body=body,
+        last_upd=time.time(),  # Set to the current time
+        start_epoch=start_epoch,
+        end_epoch=end_epoch,
+        assn_url=url
+    )
+
+    # Execute the statement using the database connection
+    try:
+        rp = ih.libs["db_connect"].run_stmt(stmt)
+        return rp.rowcount  # Returns the number of affected rows (should be 1 for a successful insert)
+    except Exception as e:
+        print(f"Error inserting assignment: {e}")
+        return None
 
 ## EOF
