@@ -85,4 +85,4 @@ libs["LangRuby"] = LangRuby
 import py_lib.run_lang.run_code as run_code
 libs["run_code"] = run_code
 
-handle_login = user_auth.handle_login
+

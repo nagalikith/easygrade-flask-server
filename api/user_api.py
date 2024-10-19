@@ -8,14 +8,14 @@ bp = Blueprint("user_rel", __name__, template_folder="templates", static_folder=
 api = Api(bp)
 
 class UserLogoff(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         del request.session["userid"]
         del request.session["eph_pass"]
         return jsonify({"message": "Logged off successfully"})
 
 class UserInfo(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {}
         try:
@@ -39,7 +39,7 @@ class UserInfo(Resource):
             return jsonify({"error": "Invalid request"})
 
 class AddUser(Resource):
-    @ih.handle_login
+    
     def post(self, userid):
         try:
             if not ih.libs["user_auth"].is_admin(userid):
@@ -64,7 +64,7 @@ class AddUser(Resource):
             return jsonify({"error": "Invalid request"})
 
 class AddUserPage(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {"endpoint_useradd": "/api/user/add"}
         ih.libs["form_helper"].add_codes(request.session, pg_info)
@@ -77,7 +77,7 @@ class AddUserPage(Resource):
             return jsonify({"error": "Invalid request"})
 
 class Users(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {}
         pg_info["endpoint_user_v"] = "/api/user/view"

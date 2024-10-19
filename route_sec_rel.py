@@ -1,19 +1,34 @@
 ## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
 
 import py_lib.helper_libs.import_helper as ih
-import flask 
+import flask
 import json
 from flask_jwt_extended import jwt_required, get_jwt_identity
+from flask import jsonify, request
 
 bp = flask.Blueprint("sec_rel", __name__, template_folder="templates", static_folder="static")
 
-@bp.route("/sections")
+@bp.route('/api/sections', methods=['OPTIONS'])
+def handle_preflight_request():
+    """Handle CORS preflight requests."""
+    origin = request.headers.get('Origin', 'http://localhost:3000')
+
+    response = flask.make_response()
+    response.headers.update({
+        'Access-Control-Allow-Origin': origin,
+        'Access-Control-Allow-Methods': 'POST, OPTIONS',
+        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+        'Access-Control-Allow-Credentials': 'true'
+    })
+    return response, 200
+
+@bp.route("/api/sections", methods=['GET'])
 @jwt_required()
 def get_sections():
     try:
-        userid = flask.request.cookies.get('user_id_cookie')
+        userid = get_jwt_identity()
+        
         # Get sections based on user role
-        print(type(userid))
         if ih.libs["user_auth"].is_admin(userid):
             data = ih.libs["db_secop"].admin_sectionview()
         else:
@@ -26,19 +41,21 @@ def get_sections():
         }
         
         for i in range(len(data['section_id'])):
-          section_data = {
-              "title": data['section_name'][i],  # Use section name as the title
-              "subtitle": data['section_code'][i],  # Use section code as the subtitle
-              "assignmentCount": 0,  # Initialize with 0 or fetch from a relevant source
-              "sectionId": data['section_id'][i],
-              "term": "fall2023"  # Assuming a fixed term; modify as needed
+            section_data = {
+                "title": data['section_name'][i],  # Use section name as the title
+                "subtitle": data['section_code'][i],  # Use section code as the subtitle
+                "assignmentCount": 0,  # Initialize with 0 or fetch from a relevant source
+                "sectionId": data['section_id'][i],
+                "term": "fall2023"  # Assuming a fixed term; modify as needed
             }
-          formatted_sections["sections"].append(section_data)
-
-        return flask.jsonify(formatted_sections)
+            formatted_sections["sections"].append(section_data)
         
+        # Return the formatted sections in the response
+        return jsonify(formatted_sections), 200
+    
     except Exception as e:
-        return flask.jsonify({
+        # Handle any exceptions and return an error response
+        return jsonify({
             "status": False,
             "error": str(e)
         }), 500
@@ -85,7 +102,7 @@ def get_section_page():
     )
 
 @bp.route("/section/users")
-@ih.handle_login
+
 def get_users_page(userid):
   pg_info = {}
 
@@ -120,7 +137,7 @@ def get_users_page(userid):
     )
 
 @bp.route("/section/create")
-@ih.handle_login
+
 def get_create_section_page(userid):
   pg_info = {"endpoint_createsec": flask.url_for("sec_rel.create_section")}
 
@@ -138,7 +155,7 @@ def get_create_section_page(userid):
 
 
 @bp.route("/section/createreq", methods=["POST"])
-@ih.handle_login
+
 def create_section(userid):
   try:
     if (not(ih.libs["user_auth"].is_admin(userid))): 
