@@ -1,26 +1,43 @@
 ## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
 
+import datetime
 import py_lib.helper_libs.import_helper as ih
 import flask
 import json
 from flask_jwt_extended import jwt_required, get_jwt_identity
-from flask import jsonify, request
+from flask import jsonify, make_response, request
 
-bp = flask.Blueprint("sec_rel", __name__, template_folder="templates", static_folder="static")
+bp = flask.Blueprint("/api/sections", __name__)
+class Config:
+   CORS_ORIGIN = "http://localhost:3000"
+   COOKIE_SECURE = False  # Set to True in production
+   COOKIE_SAMESITE = 'Lax'
 
-@bp.route('/api/sections', methods=['OPTIONS'])
-def handle_preflight_request():
+@bp.before_app_request
+def handle_cors_preflight():
     """Handle CORS preflight requests."""
-    origin = request.headers.get('Origin', 'http://localhost:3000')
+    if request.method == 'OPTIONS':
+        response = make_response()  # Create a response
+        response.headers.update({
+            'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
+            'Access-Control-Allow-Methods': 'POST, GET, OPTIONS',
+            'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+            'Access-Control-Allow-Credentials': 'true'
+        })
+        return response, 200  # Return 200 OK status
 
-    response = flask.make_response()
-    response.headers.update({
-        'Access-Control-Allow-Origin': origin,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    return response, 200
+def get_term_from_date(date_str):
+    """Helper function to determine the term based on the date"""
+    date = datetime.strptime(date_str, '%Y-%m-%d')
+    month = date.month
+    year = date.year
+    
+    if month >= 8 and month <= 12:
+        return f"Fall {year}"
+    elif month >= 1 and month <= 5:
+        return f"Spring {year}"
+    else:
+        return f"Summer {year}"
 
 @bp.route("/api/sections", methods=['GET'])
 @jwt_required()
@@ -34,72 +51,157 @@ def get_sections():
         else:
             data = ih.libs["db_secop"].get_sectionview(userid)
         
-        # Transform sections into the required format
-        formatted_sections = {
+        # Initialize the response structure
+        formatted_response = {
             "status": True,
-            "sections": []
+            "courses": {}  # Will be organized by terms
         }
         
+        # Process each section
         for i in range(len(data['section_id'])):
+            # Get the term for this section
+            # Assuming there's a start_date field in your data
+            term = get_term_from_date(data['start_date'][i]) if 'start_date' in data else "Fall 2023"
+            
+            # Create section data
             section_data = {
-                "title": data['section_name'][i],  # Use section name as the title
-                "subtitle": data['section_code'][i],  # Use section code as the subtitle
-                "assignmentCount": 0,  # Initialize with 0 or fetch from a relevant source
-                "sectionId": data['section_id'][i],
-                "term": "fall2023"  # Assuming a fixed term; modify as needed
+                "title": data['section_name'][i],
+                "subtitle": f"Section {data['section_code'][i]}",
+                "assignmentCount": data.get('assignment_count', [0])[i] if 'assignment_count' in data else 0,
+                "sectionId": str(data['section_id'][i]),  # Convert to string to ensure JSON compatibility
+                "instructor": data.get('instructor_name', [''])[i] if 'instructor_name' in data else '',
+                "enrollmentCount": data.get('enrollment_count', [0])[i] if 'enrollment_count' in data else 0,
+                "startDate": data.get('start_date', [''])[i] if 'start_date' in data else '',
+                "endDate": data.get('end_date', [''])[i] if 'end_date' in data else ''
             }
-            formatted_sections["sections"].append(section_data)
+            
+            # Initialize the term list if it doesn't exist
+            if term not in formatted_response["courses"]:
+                formatted_response["courses"][term] = []
+            
+            # Add the section to the appropriate term
+            formatted_response["courses"][term].append(section_data)
         
-        # Return the formatted sections in the response
-        return jsonify(formatted_sections), 200
+        # Sort sections within each term by title
+        for term in formatted_response["courses"]:
+            formatted_response["courses"][term].sort(key=lambda x: x["title"])
+        
+        return jsonify(formatted_response), 200
     
     except Exception as e:
-        # Handle any exceptions and return an error response
+        # Log the error for debugging (implement proper logging)
+        print(f"Error in get_sections: {str(e)}")
+        
         return jsonify({
             "status": False,
-            "error": str(e)
+            "error": "Failed to fetch courses. Please try again later.",
+            "debug_message": str(e)  # Remove in production
         }), 500
 
-@bp.route("/section")
+@bp.route("/api/sections/<string:section_id>", methods=["GET"])
 @jwt_required()
-def get_section_page():
-  userid = flask.request.cookies.get('user_id_cookie')
-  pg_info = {}
+def get_section(section_id):
+    userid = get_jwt_identity()
+    response_data = {}
 
-  try:
-    secid = flask.request.args["sectionid"]
-    
-    if ((ih.libs["form_helper"].validate_hex_ids(secid))):
-      flask.session["error_id"] = "e04"
-      raise ValueError("Invalid Section Id")
+    try:
+        # Validate section_id
+        if not ih.libs["form_helper"].validate_hex_ids(section_id):
+            flask.session["error_id"] = "e04"
+            raise ValueError("Invalid Section Id")
 
-    acc_info = ih.libs["db_secop"].user_has_secacc(userid, secid)
+        # Check if the user has access to the section
+        acc_info = ih.libs["db_secop"].user_has_secacc(userid, section_id)
 
-    if (not(acc_info["status"])):
-      flask.session["error_id"] = "e04"
-      raise PermissionError("User doesnt have access to this resource")
+        if not acc_info["status"]:
+            flask.session["error_id"] = "e04"
+            raise PermissionError("User doesn't have access to this resource")
 
-    pg_info["sec_id"] = secid
-    links = {}
-    
-    links["Assignments"] = flask.url_for("assign_op.list_assignment")
-    links["People"] = flask.url_for("sec_rel.get_users_page")
+        # Fetch the course information
+        course_info = ih.libs["db_secop"].get_course_info(section_id)
 
-    if (acc_info["role"] == "student"):
-      links["Results"] = flask.url_for("sec_rel.get_user_result_page") 
-    else:
-      links["Create Assignment"] = flask.url_for("assign_op.get_create_assignment_page")
-      links["Results"] = flask.url_for("sec_rel.get_sec_result_page")
-      
-    pg_info["links"] = links
+        if not course_info:
+            flask.session["error_id"] = "e04"
+            raise ValueError("Course not found")
 
-    return flask.render_template(
-      "section.html", pg_info=json.dumps(pg_info)
-    )
-  except:
-    return flask.redirect(
-      flask.url_for("sec_rel.get_section_page")
-    )
+        # Populate the course data
+        response_data["course"] = {
+            "id": course_info["id"],
+            "name": course_info["name"],
+            "term": course_info["term"],
+            "description": course_info["description"],
+            "entryCode": course_info["entry_code"],
+            "sectionId": section_id,
+            "instructors": [
+                {"id": instructor["id"], "name": instructor["name"], "role": instructor["role"]}
+                for instructor in course_info["instructors"]
+            ]
+        }
+
+        # Include available links based on user role
+        links = {}
+        links["Assignments"] = flask.url_for("get_section_assignments", section_id=section_id)
+        links["People"] = flask.url_for("sec_rel.get_users_page")
+
+        if acc_info["role"] == "student":
+            links["Results"] = flask.url_for("sec_rel.get_user_result_page")
+        else:
+            links["Create Assignment"] = flask.url_for("assign_op.get_create_assignment_page")
+            links["Results"] = flask.url_for("sec_rel.get_sec_result_page")
+
+        response_data["links"] = links
+
+        return flask.jsonify(response_data)
+
+    except Exception as e:
+        # Log the error and redirect to the section page if an issue occurs
+        flask.session["error_msg"] = str(e)
+        return flask.redirect(flask.url_for("sec_rel.get_section_page"))
+
+
+@bp.route("/api/sections/<string:section_id>/assignments", methods=["GET"])
+@jwt_required()
+def get_section_assignments(section_id):
+    userid = flask.request.cookies.get('user_id_cookie')
+    response_data = {}
+
+    try:
+        # Validate section_id
+        if not ih.libs["form_helper"].validate_hex_ids(section_id):
+            flask.session["error_id"] = "e04"
+            raise ValueError("Invalid Section Id")
+
+        # Check if the user has access to the section
+        acc_info = ih.libs["db_secop"].user_has_secacc(userid, section_id)
+
+        if acc_info["status"]:
+            flask.session["error_id"] = "e04"
+            raise PermissionError("User doesn't have access to this resource")
+
+        # Fetch assignments for the given section
+        assignments = ih.libs["db_secop"].get_assignments_by_section(section_id)
+
+        # Format assignments data
+        response_data["assignments"] = [
+            {
+                "id": assignment["id"],
+                "name": assignment["name"],
+                "released": assignment["released"],
+                "due": assignment["due"],
+                "submissions": assignment["submissions"],
+                "graded": assignment["graded"],
+                "published": assignment["published"],
+                "regrades": assignment.get("regrades")
+            }
+            for assignment in assignments
+        ]
+
+        return flask.jsonify(response_data)
+
+    except Exception as e:
+        # Log the error and redirect to the section page if an issue occurs
+        flask.session["error_msg"] = str(e)
+        return flask.redirect(flask.url_for("sec_rel.get_section_page"))
 
 @bp.route("/section/users")
 

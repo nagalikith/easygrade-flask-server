@@ -39,6 +39,24 @@ def get_sectionview_stmt() -> tuple[list[str], any]:
     return (col_names, stmt)
 
 
+def admin_sectionview() -> dict[str, list]:
+    """
+    Retrieves section view data for admin purposes.
+
+    Returns:
+        A dictionary mapping section details to their corresponding values.
+    """
+    logger.info("Retrieving section view data for admin.")
+
+    # Get the column names and the statement for the section view
+    col_names, stmt = get_sectionview_stmt()
+
+    # Get the mapped results
+    results = ret_map_list(col_names, stmt)
+
+    logger.info("Successfully retrieved section view data.")
+    return results
+
 def ret_map_list(col_names: list[str], stmt: any) -> dict[str, list]:
     """
     Executes a SQL statement and maps the results to a dictionary format.
@@ -69,25 +87,6 @@ def ret_map_list(col_names: list[str], stmt: any) -> dict[str, list]:
     
     logger.debug(f"Mapped results: {res}")
     return res
-
-
-def admin_sectionview() -> dict[str, list]:
-    """
-    Retrieves section view data for admin purposes.
-
-    Returns:
-        A dictionary mapping section details to their corresponding values.
-    """
-    logger.info("Retrieving section view data for admin.")
-
-    # Get the column names and the statement for the section view
-    col_names, stmt = get_sectionview_stmt()
-
-    # Get the mapped results
-    results = ret_map_list(col_names, stmt)
-
-    logger.info("Successfully retrieved section view data.")
-    return results
 
 def get_sectionview(userid):
     # Ensure userid is a string
@@ -217,17 +216,18 @@ def sec_users_list(secid):
   return res
 
 def user_has_secacc(userid, secid):
-  res = {"status": None, "role": None}
+  res = {"status": False, "role": None}
 
   if (ih.libs["user_auth"].is_admin(userid)):
     res["status"] = True
     res["role"] = "admin"
+    return res
 
   else:
-    stmt = sa.select(tables.info["sec_acc"]["col"]["role"]).where(
+    stmt = sa.select(tables_info["sec_acc"]["col"]["role"]).where(
       sa.and_(
-        tables.info["sec_acc"]["col"]["section_id"] == secid,
-        tables.info["sec_acc"]["col"]["user_id"] == userid
+        tables_info["sec_acc"]["col"]["section_id"] == secid,
+        tables_info["sec_acc"]["col"]["user_id"] == userid
       )
     )
 
@@ -243,4 +243,134 @@ def user_has_secacc(userid, secid):
     else:
       res["status"] = True
       res["role"] = "teacher" if stmt_res == 'T' else "student"
-## EOF
+
+
+## New Libs
+def get_course_info(section_id: str) -> dict:
+    """
+    Fetch course information for a given section ID.
+
+    Args:
+        section_id: The section ID for which to fetch course information.
+
+    Returns:
+        A dictionary containing the course information, or an empty dictionary if not found.
+    """
+    logger.info("Fetching course information.")
+
+    # Ensure section_id is a string
+    if not isinstance(section_id, str):
+        raise ValueError("section_id must be a string")
+
+    # Define the columns to retrieve
+    col_names = ["id", "name", "term", "description", "entry_code", "instructors"]
+
+    # Prepare the SQL statement to fetch course info
+    try:
+        course_table = tables_info["section"]["table"]
+        stmt = sa.select(
+            course_table.c.section_id,
+            course_table.c.section_name,
+            course_table.c.semester,
+            course_table.c.description,
+            course_table.c.section_code
+        ).where(course_table.c.section_id == section_id)
+    except KeyError as e:
+        logger.error(f"KeyError: {e} - Check the structure of tables_info")
+        return {}
+
+    # Map the results to the column names
+    result = ret_map_list(col_names, stmt)
+
+    # Fetch instructors separately and add to the course data
+    try:
+        instructors = get_instructors_by_section(section_id)
+        result["instructors"] = instructors
+    except Exception as e:
+        logger.error(f"Error fetching instructors: {e}")
+        result["instructors"] = []
+
+    return result
+
+def get_assignments_by_section(section_id: str) -> list[dict]:
+    """
+    Fetch assignments for a given section ID.
+
+    Args:
+        section_id: The section ID for which to fetch assignments.
+
+    Returns:
+        A list of dictionaries, where each dictionary represents an assignment.
+    """
+    logger.info("Fetching assignments for the section.")
+
+    # Ensure section_id is a string
+    if not isinstance(section_id, str):
+        raise ValueError("section_id must be a string")
+
+    # Define the columns to retrieve
+    col_names = ["id", "name", "released", "due", "submissions", "graded", "published", "regrades"]
+
+    # Prepare the SQL statement to fetch assignment info
+    try:
+        assignment_table = tables_info["assignment"]["table"]
+        stmt = sa.select(
+            assignment_table.c.assn_id,
+            assignment_table.c.assn_title,
+            assignment_table.c.start_epoch,
+            assignment_table.c.end_epoch,
+            assignment_table.c.submissions,
+            assignment_table.c.graded,
+            assignment_table.c.published,
+            assignment_table.c.regrades
+        ).where(assignment_table.c.section_id == section_id)
+    except KeyError as e:
+        logger.error(f"KeyError: {e} - Check the structure of tables_info")
+        return []
+
+    # Map the results to the column names
+    return ret_map_list(col_names, stmt)
+
+def get_instructors_by_section(section_id: str) -> list[dict]:
+    """
+    Fetch instructors for a given section ID.
+
+    Args:
+        section_id: The section ID for which to fetch instructors.
+
+    Returns:
+        A list of dictionaries representing the instructors.
+    """
+    logger.info("Fetching instructors for the section.")
+
+    # Define the columns to retrieve
+    col_names = ["user_id", "username", "role"]
+
+    # Prepare the SQL statement to fetch instructor info
+    try:
+        user_info_table = tables_info["user_info"]["table"]
+        sec_acc_table = tables_info["sec_acc"]["table"]
+
+        # Join the sec_acc and user_info tables to get instructor details
+        stmt = sa.select(
+            user_info_table.c.user_id,
+            user_info_table.c.username,
+            sec_acc_table.c.role
+        ).select_from(
+            sec_acc_table.join(
+                user_info_table, 
+                sec_acc_table.c.user_id == user_info_table.c.user_id
+            )
+        ).where(
+            sa.and_(
+                sec_acc_table.c.section_id == section_id,
+                sec_acc_table.c.role == "instructor"  # Filter for instructors
+            )
+        )
+    except KeyError as e:
+        logger.error(f"KeyError: {e} - Check the structure of tables_info")
+        return []
+
+    # Map the results to the column names
+    return ret_map_list(col_names, stmt)
+
