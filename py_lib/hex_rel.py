@@ -19,11 +19,13 @@ def gen_hex(length=None):
   return(res)
 
 def check_hex(val, length=None):
-  if (len(val) != length):
-    return False
+      # Check if length is specified and if it matches
+    if length is not None and len(val) != length:
+        return False
 
-  for char in val:
-    if (val not in hex_chars):
-      return False
+    # Check if all characters in the string are valid hexadecimal characters
+    for char in val:
+        if char not in hex_chars:
+            return False
 
-  return True
+    return True

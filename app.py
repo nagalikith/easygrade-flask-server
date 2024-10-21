@@ -52,6 +52,7 @@ def create_app(config_class=Config):
     ]
     for blueprint in blueprints:
         app.register_blueprint(blueprint)
+    
 
 
     return app
