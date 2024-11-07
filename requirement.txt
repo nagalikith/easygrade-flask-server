@@ -20,3 +20,5 @@ Flask-JWT-Extended
 PyJWT
 aniso8601
 flask_restful
+psycopg2-binary
+flask_cors
