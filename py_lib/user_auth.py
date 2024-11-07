@@ -1,8 +1,6 @@
 from hashlib import sha256
 from flask import Blueprint, jsonify, request, make_response, current_app
 import import_helper as ih
-
-from models import db, User
 from flask_jwt_extended import (
     jwt_required,
     get_jwt_identity,

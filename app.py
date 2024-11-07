@@ -2,7 +2,7 @@ from datetime import timedelta
 from flask import Flask, jsonify, request, make_response
 from flask_cors import CORS
 from flask_jwt_extended import JWTManager, create_access_token, get_jwt_identity, jwt_required
-import py_lib.helper_libs.import_helper as ih
+import import_helper as ih
 import py_lib.user_auth as user_auth
 import logging
 from typing import Dict, List, Tuple, Union

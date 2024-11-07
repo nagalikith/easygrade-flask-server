@@ -16,12 +16,6 @@ def get_assignment_dictionary(assignment_id: str) -> Dict[str, Any]:
     """
     Retrieve the assignment dictionary for a given assignment ID.
     If not in memory, read it from the file system.
-
-    Args:
-        assignment_id (str): The assignment ID.
-
-    Returns:
-        Dict[str, Any]: The assignment dictionary.
     """
     if assignment_id not in assignment_info_dictionary:
         logger.info(f"Reading assignment info for {assignment_id} from file system")
@@ -31,12 +25,6 @@ def get_assignment_dictionary(assignment_id: str) -> Dict[str, Any]:
 def get_assignment_dictionary_no_system(assignment_id: str) -> Dict[str, Any]:
     """
     Get the assignment dictionary without system-specific keys.
-
-    Args:
-        assignment_id (str): The assignment ID.
-
-    Returns:
-        Dict[str, Any]: The filtered assignment dictionary.
     """
     assignment_info = {key: value for key, value in get_assignment_dictionary(assignment_id).items() if not key.startswith("__")}
     return assignment_info

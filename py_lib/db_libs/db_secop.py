@@ -263,7 +263,7 @@ def get_course_info(section_id: str) -> dict:
         raise ValueError("section_id must be a string")
 
     # Define the columns to retrieve
-    col_names = ["id", "name", "term", "description", "entry_code", "instructors"]
+    col_names = ["section_id", "section_name", "section_code"]
 
     # Prepare the SQL statement to fetch course info
     try:
@@ -271,8 +271,6 @@ def get_course_info(section_id: str) -> dict:
         stmt = sa.select(
             course_table.c.section_id,
             course_table.c.section_name,
-            course_table.c.semester,
-            course_table.c.description,
             course_table.c.section_code
         ).where(course_table.c.section_id == section_id)
     except KeyError as e:
@@ -309,21 +307,27 @@ def get_assignments_by_section(section_id: str) -> list[dict]:
         raise ValueError("section_id must be a string")
 
     # Define the columns to retrieve
-    col_names = ["id", "name", "released", "due", "submissions", "graded", "published", "regrades"]
+    col_names = ["id", "name", "released", "due"]
 
     # Prepare the SQL statement to fetch assignment info
     try:
-        assignment_table = tables_info["assignment"]["table"]
+        assignment_table = tables_info["assn"]["table"]
+        assn_acc_table = tables_info["assn_acc"]["table"]
         stmt = sa.select(
             assignment_table.c.assn_id,
             assignment_table.c.assn_title,
             assignment_table.c.start_epoch,
-            assignment_table.c.end_epoch,
-            assignment_table.c.submissions,
-            assignment_table.c.graded,
-            assignment_table.c.published,
-            assignment_table.c.regrades
-        ).where(assignment_table.c.section_id == section_id)
+            assignment_table.c.end_epoch
+        ).select_from(
+          assn_acc_table.join(
+              assignment_table,
+              assn_acc_table.c.assn_id == assignment_table.c.assn_id  # Join condition
+          )
+      ).where(
+          sa.and_(
+              assn_acc_table.c.section_id == section_id  # Filter by section_id
+          )
+      )
     except KeyError as e:
         logger.error(f"KeyError: {e} - Check the structure of tables_info")
         return []
@@ -331,6 +335,9 @@ def get_assignments_by_section(section_id: str) -> list[dict]:
     # Map the results to the column names
     return ret_map_list(col_names, stmt)
 
+
+##FIX THIS
+# @To-do
 def get_instructors_by_section(section_id: str) -> list[dict]:
     """
     Fetch instructors for a given section ID.
@@ -348,25 +355,27 @@ def get_instructors_by_section(section_id: str) -> list[dict]:
 
     # Prepare the SQL statement to fetch instructor info
     try:
-        user_info_table = tables_info["user_info"]["table"]
-        sec_acc_table = tables_info["sec_acc"]["table"]
+      # Get the tables from tables_info
+      assn_table = tables_info["assn"]["table"]
+      assn_acc_table = tables_info["assn_acc"]["table"]
 
-        # Join the sec_acc and user_info tables to get instructor details
-        stmt = sa.select(
-            user_info_table.c.user_id,
-            user_info_table.c.username,
-            sec_acc_table.c.role
-        ).select_from(
-            sec_acc_table.join(
-                user_info_table, 
-                sec_acc_table.c.user_id == user_info_table.c.user_id
-            )
-        ).where(
-            sa.and_(
-                sec_acc_table.c.section_id == section_id,
-                sec_acc_table.c.role == "instructor"  # Filter for instructors
-            )
-        )
+      # Join the assn and assn_acc tables to get assignment details
+      stmt = sa.select(
+          assn_table.c.assn_id,
+          assn_table.c.assn_title,
+          assn_table.c.start_epoch,
+          assn_table.c.end_epoch,
+          assn_acc_table.c.user_id  # Assuming you want user_id from assn_acc
+      ).select_from(
+          assn_acc_table.join(
+              assn_table,
+              assn_acc_table.c.assn_id == assn_table.c.assn_id  # Join condition
+          )
+      ).where(
+          sa.and_(
+              assn_acc_table.c.section_id == section_id  # Filter by section_id
+          )
+      )
     except KeyError as e:
         logger.error(f"KeyError: {e} - Check the structure of tables_info")
         return []

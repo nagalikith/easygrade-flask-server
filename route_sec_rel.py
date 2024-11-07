@@ -6,7 +6,7 @@ import flask
 import json
 from flask_jwt_extended import jwt_required, get_jwt_identity
 from flask import jsonify, make_response, request
-
+import logging
 bp = flask.Blueprint("/api/sections", __name__)
 class Config:
    CORS_ORIGIN = "http://localhost:3000"
@@ -123,34 +123,25 @@ def get_section(section_id):
         if not course_info:
             flask.session["error_id"] = "e04"
             raise ValueError("Course not found")
+        
+        if isinstance(course_info["instructors"], str):
+            #logger.error(f"Expected a list of dictionaries for instructors, but got: {course_info["instructors"]}") # type: ignore
+            return {}
+
 
         # Populate the course data
         response_data["course"] = {
-            "id": course_info["id"],
-            "name": course_info["name"],
-            "term": course_info["term"],
-            "description": course_info["description"],
-            "entryCode": course_info["entry_code"],
+            "id": course_info["section_id"],
+            "name": course_info["section_name"],
+            "entryCode": course_info["section_code"],
             "sectionId": section_id,
             "instructors": [
-                {"id": instructor["id"], "name": instructor["name"], "role": instructor["role"]}
-                for instructor in course_info["instructors"]
-            ]
+            {
+              "name": instructor
+            }
+            for instructor in course_info.get("instructors", [])]
         }
-
-        # Include available links based on user role
-        links = {}
-        links["Assignments"] = flask.url_for("get_section_assignments", section_id=section_id)
-        links["People"] = flask.url_for("sec_rel.get_users_page")
-
-        if acc_info["role"] == "student":
-            links["Results"] = flask.url_for("sec_rel.get_user_result_page")
-        else:
-            links["Create Assignment"] = flask.url_for("assign_op.get_create_assignment_page")
-            links["Results"] = flask.url_for("sec_rel.get_sec_result_page")
-
-        response_data["links"] = links
-
+        print(response_data)
         return flask.jsonify(response_data)
 
     except Exception as e:
@@ -162,7 +153,7 @@ def get_section(section_id):
 @bp.route("/api/sections/<string:section_id>/assignments", methods=["GET"])
 @jwt_required()
 def get_section_assignments(section_id):
-    userid = flask.request.cookies.get('user_id_cookie')
+    userid = get_jwt_identity()
     response_data = {}
 
     try:
@@ -174,28 +165,26 @@ def get_section_assignments(section_id):
         # Check if the user has access to the section
         acc_info = ih.libs["db_secop"].user_has_secacc(userid, section_id)
 
-        if acc_info["status"]:
+        if not acc_info["status"]:
             flask.session["error_id"] = "e04"
             raise PermissionError("User doesn't have access to this resource")
 
         # Fetch assignments for the given section
         assignments = ih.libs["db_secop"].get_assignments_by_section(section_id)
-
-        # Format assignments data
-        response_data["assignments"] = [
+        if all(value for value in assignments.values()): 
+          # Format assignments data
+          response_data["assignments"] = [
             {
-                "id": assignment["id"],
-                "name": assignment["name"],
-                "released": assignment["released"],
-                "due": assignment["due"],
-                "submissions": assignment["submissions"],
-                "graded": assignment["graded"],
-                "published": assignment["published"],
-                "regrades": assignment.get("regrades")
+                "id": assignment["assn_id"],
+                "name": assignment["assn_title"],
+                "released": assignment["start_epoch"],
+                "due": assignment["stop_epoch"],
             }
             for assignment in assignments
-        ]
-
+          ]
+        else:
+           response_data["assignments"] = []
+        print(response_data)
         return flask.jsonify(response_data)
 
     except Exception as e:

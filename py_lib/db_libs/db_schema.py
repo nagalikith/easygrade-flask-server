@@ -148,6 +148,30 @@ def reg_schema():
         sa.CheckConstraint('final_score >= 0', name='valid_final_score')
     )
 
+    # Outline table
+    outline = sa.Table("outline", metadata,
+        sa.Column("outline_id", sa.Unicode(id_size), primary_key=True),
+        sa.Column("section_id", sa.ForeignKey("section.section_id", ondelete="CASCADE"), nullable=False, index=True),
+        sa.Column("title", sa.Unicode(100), nullable=False),
+        sa.Column("content", sa.Text, nullable=True),
+        sa.Column("sequence_number", sa.Integer(), nullable=False),
+        *audit_columns(),
+        sa.CheckConstraint('sequence_number > 0', name='valid_outline_sequence')
+    )
+
+    # Rubric table
+    rubric = sa.Table("rubric", metadata,
+        sa.Column("rubric_id", sa.Unicode(id_size), primary_key=True),
+        sa.Column("outline_id", sa.ForeignKey("outline.outline_id", ondelete="CASCADE"), nullable=False, index=True), # Link to outline
+        sa.Column("criteria", sa.Unicode(100), nullable=False),
+        sa.Column("description", sa.Text, nullable=True),
+        sa.Column("max_score", sa.Float(), nullable=False),
+        sa.Column("weight", sa.Float(), nullable=False),
+        *audit_columns(),
+        sa.CheckConstraint('max_score >= 0', name='valid_rubric_max_score'),
+        sa.CheckConstraint('weight >= 0', name='valid_rubric_weight')
+    )
+
     # Create indexes
     sa.Index('idx_submission_user_assn', subm.c.user_id, subm.c.assn_id)
     sa.Index('idx_assn_date_range', assn.c.start_epoch, assn.c.end_epoch)
@@ -155,11 +179,11 @@ def reg_schema():
     sa.Index('idx_course_roster_section_user', course_roster.c.section_id, course_roster.c.user_id)
     sa.Index('idx_user_preferences_user_type', user_preferences.c.user_id, user_preferences.c.preference_type)
 
-    reg_schema()
-
+reg_schema()
 # Dictionary to store table information
 tables_info = {}
 for tb_name in metadata.tables:
     tables_info[tb_name] = {"table": metadata.tables[tb_name], "col":{}}
     for col in metadata.tables[tb_name].c:
         tables_info[tb_name]["col"][col.name] = col
+
