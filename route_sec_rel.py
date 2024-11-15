@@ -1,6 +1,6 @@
 ## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
 
-import datetime
+from datetime import datetime
 import py_lib.helper_libs.import_helper as ih
 import flask
 import json
@@ -171,20 +171,17 @@ def get_section_assignments(section_id):
 
         # Fetch assignments for the given section
         assignments = ih.libs["db_secop"].get_assignments_by_section(section_id)
-        if all(value for value in assignments.values()): 
           # Format assignments data
-          response_data["assignments"] = [
+        response_data["assignments"] = [
             {
                 "id": assignment["assn_id"],
-                "name": assignment["assn_title"],
-                "released": assignment["start_epoch"],
-                "due": assignment["stop_epoch"],
+                "name": assignment["name"],
+                "released": datetime.fromtimestamp(assignment["released"]).isoformat(),
+                "due": datetime.fromtimestamp(assignment["due"]).isoformat(),
             }
             for assignment in assignments
           ]
-        else:
-           response_data["assignments"] = []
-        print(response_data)
+        print("testing route _____________________ETS_________")
         return flask.jsonify(response_data)
 
     except Exception as e:
@@ -246,7 +243,6 @@ def get_create_section_page(userid):
 
 
 @bp.route("/section/createreq", methods=["POST"])
-
 def create_section(userid):
   try:
     if (not(ih.libs["user_auth"].is_admin(userid))): 

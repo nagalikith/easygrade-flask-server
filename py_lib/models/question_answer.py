@@ -350,7 +350,7 @@ def process_submission():
         file.save(temp_path)
         
         # Process document
-        processor = AnswerRegionProcessor()
+        processor = HybridPDFProcessor()
         questions_by_page = processor.process_document(temp_path)
         
         # Convert results to JSON-serializable format
