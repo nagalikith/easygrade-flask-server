@@ -295,46 +295,51 @@ def get_assignments_by_section(section_id: str) -> list[dict]:
     Fetch assignments for a given section ID.
 
     Args:
-        section_id: The section ID for which to fetch assignments.
+        section_id (str): The section ID for which to fetch assignments.
 
     Returns:
-        A list of dictionaries, where each dictionary represents an assignment.
+        List[Dict]: A list of dictionaries, where each dictionary represents an assignment.
     """
-    logger.info("Fetching assignments for the section.")
+    logger.info("Fetching assignments for section %s", section_id)
 
     # Ensure section_id is a string
     if not isinstance(section_id, str):
         raise ValueError("section_id must be a string")
 
     # Define the columns to retrieve
-    col_names = ["id", "name", "released", "due"]
+    col_names = ["assn_id", "name", "released", "due"]
 
     # Prepare the SQL statement to fetch assignment info
     try:
         assignment_table = tables_info["assn"]["table"]
         assn_acc_table = tables_info["assn_acc"]["table"]
+        
         stmt = sa.select(
             assignment_table.c.assn_id,
             assignment_table.c.assn_title,
             assignment_table.c.start_epoch,
             assignment_table.c.end_epoch
         ).select_from(
-          assn_acc_table.join(
-              assignment_table,
-              assn_acc_table.c.assn_id == assignment_table.c.assn_id  # Join condition
-          )
-      ).where(
-          sa.and_(
-              assn_acc_table.c.section_id == section_id  # Filter by section_id
-          )
-      )
+            assn_acc_table.join(
+                assignment_table,
+                assn_acc_table.c.assn_id == assignment_table.c.assn_id  # Join condition
+            )
+        ).where(
+            assn_acc_table.c.section_id == section_id  # Filter by section_id
+        )
+        
     except KeyError as e:
         logger.error(f"KeyError: {e} - Check the structure of tables_info")
         return []
 
-    # Map the results to the column names
-    return ret_map_list(col_names, stmt)
-
+    # Execute the statement and map results to the column names
+    try:
+        result = ih.libs["db_connect"].run_stmt(stmt)
+        assignments = [dict(zip(col_names, row)) for row in result]
+        return assignments
+    except SQLAlchemyError as e:
+        logger.error(f"Database error occurred: {e}")
+        return []
 
 ##FIX THIS
 # @To-do
@@ -351,7 +356,7 @@ def get_instructors_by_section(section_id: str) -> list[dict]:
     logger.info("Fetching instructors for the section.")
 
     # Define the columns to retrieve
-    col_names = ["user_id", "username", "role"]
+    col_names = ["user_id"]
 
     # Prepare the SQL statement to fetch instructor info
     try:

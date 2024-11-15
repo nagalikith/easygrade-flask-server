@@ -5,16 +5,18 @@ import json
 import import_helper as ih
 import sqlalchemy as sa
 from dotenv import load_dotenv
-
+import boto3
+from datetime import datetime
 load_dotenv()
+
+from flask_jwt_extended import jwt_required, get_jwt_identity
+tables_info = ih.libs["db_schema"].tables_info
 bp = flask.Blueprint("assign_op", __name__)
 from enum import Enum
 ASSIGNMENT_DIR = ih.get_env_val("PATH_ASSN_DIR_PAR")
 
-dynamodb = boto3.resource('dynamodb')
 s3 = boto3.client('s3')
-ASSIGNMENT_TABLE = dynamodb.Table('Assignments')
-ASSIGNMENT_BUCKET = 'your-s3-bucket-name'
+ASSIGNMENT_BUCKET = 'snaga-dev-cleferr-ai'
 
 class AssignmentType(Enum):
     CODE = "code"
@@ -23,7 +25,9 @@ class AssignmentType(Enum):
 
 # Route to create an assignment
 @bp.route("/assignments", methods=["POST"])
+@jwt_required()
 def create_assignment():
+    authord_id = get_jwt_identity()
     assignment_id = ih.libs["hex_rel"].gen_hex()
     assignment_info = flask.request.form.to_dict()
     
@@ -38,9 +42,39 @@ def create_assignment():
     if assignment_type == AssignmentType.CODE:
         _setup_code_assignment(assignment_id, assignment_info)
     elif assignment_type in [AssignmentType.PDF, AssignmentType.IMAGE]:
-        _setup_file_assignment(assignment_id, assignment_info)
+        uploaded_file = flask.request.files.get("template")
+        if uploaded_file:
+            release_date = assignment_info.get("releaseDate")
+            due_date = assignment_info.get("dueDate")
+            file_path = f"/tmp/{assignment_id}_{uploaded_file.filename}"
+            uploaded_file.save(file_path)
+
+            #upload to s3
+            s3_key = f"assignments/{assignment_id}/{uploaded_file.filename}"
+            s3.upload_file(file_path, ASSIGNMENT_BUCKET,s3_key)
+            assn_url = f"https://{ASSIGNMENT_BUCKET}.s3.amazonaws.com/{s3_key}"
+            stmt = sa.insert(tables_info["assn"]["table"]).values(
+                assn_id=assignment_id,
+                assn_title=assignment_info.get("assignmentName"),
+                author_id=authord_id,
+                start_epoch=int(datetime.fromisoformat(release_date).timestamp()) if release_date else None,
+                end_epoch=int(datetime.fromisoformat(due_date).timestamp()) if due_date else None,
+                assn_url=assn_url,
+                last_upd=int(datetime.now().timestamp())
+            )
+
+            #stmt2 = sa.insert(tables_info["assn_acc"]["table"]).values(
+            #    assn_id=assignment_id,
+            #    section_id=assignment_info.get("section_id"),
+            #    user_id= authord_id
+            #)
+            # Execute the insert statement
+            ih.libs["db_connect"].run_stmt(stmt)
+            #ih.libs["db_connect"].run_stmt(stmt2)
+
 
     return flask.jsonify({"id": assignment_id})
+
 
 # Route to edit an assignment
 @bp.route("/api/assignment/edit", methods=["PUT"])
@@ -105,13 +139,13 @@ def copy_assignment():
 
 @bp.route("/assignments/<assignment_id>/submissions", methods=["POST"])
 def submit_assignment(assignment_id):
-    student_id = request.form.get("student_id")
+    student_id = flask.request.form.get("student_id")
     if not student_id:
-        return jsonify({"error": "Student ID required"}), 400
+        return flask.jsonify({"error": "Student ID required"}), 400
 
-    submission = request.files.get("submission")
+    submission = flask.request.files.get("submission")
     if not submission:
-        return jsonify({"error": "Submission file required"}), 400
+        return flask.jsonify({"error": "Submission file required"}), 400
 
     submission_dir = f"{ASSIGNMENT_DIR}{assignment_id}/submissions/{student_id}"
     ih.libs["fileop_helper"].make_dir(submission_dir)
@@ -145,20 +179,6 @@ def _setup_code_assignment(assignment_id: str, info: Dict):
     for thread in threads:
         thread.join()
 
-def _setup_file_assignment(assignment_id: str, info: Dict):
-    file_path = info.get("file_path")
-    if not file_path:
-        raise ValueError("File path required")
-
-    dest_path = f"{ASSIGNMENT_DIR}{assignment_id}/{os.path.basename(file_path)}"
-    ih.libs["fileop_helper"].copy_file(file_path, dest_path)
-    ih.libs["s3_rel"].write_to_s3(dest_path, f"assignments/{assignment_id}/{os.path.basename(file_path)}")
-
-    if key_path := info.get("answer_key_path"):
-        key_dest = f"{ASSIGNMENT_DIR}{assignment_id}/{os.path.basename(key_path)}"
-        ih.libs["fileop_helper"].copy_file(key_path, key_dest)
-        ih.libs["s3_rel"].write_to_s3(key_dest, f"assignments/{assignment_id}/{os.path.basename(key_path)}")
-
 def _handle_code_submission(assignment_id: str, student_id: str, submission) -> Dict:
     submission_path = f"{ASSIGNMENT_DIR}{assignment_id}/submissions/{student_id}/submission.py"
     submission.save(submission_path)
@@ -183,7 +203,7 @@ def _handle_file_submission(assignment_id: str, student_id: str, submission) -> 
         f"assignments/{assignment_id}/submissions/{student_id}/{filename}"
     )
     
-    return jsonify({"status": "success"})
+    return flask.jsonify({"status": "success"})
 
 def _delete_assignment_files(assignment_id: str, delete_s3: bool = True):
     ih.libs["fileop_helper"].rm_dir(f"{ASSIGNMENT_DIR}{assignment_id}/")

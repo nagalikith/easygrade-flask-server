@@ -1,0 +1,10 @@
+model:
+  name: facebook/detr-resnet-50
+  type: detr
+output:
+  local_directory: processed_answers
+processing:
+  min_box_area: 5000
+  overlap_threshold: 0.5
+  target_height: 800
+  target_width: 600
