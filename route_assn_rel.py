@@ -76,7 +76,7 @@ def create_assignment():
     return flask.jsonify({"id": assignment_id})
 
 
-# Route to edit an assignment
+# To-do
 @bp.route("/api/assignment/edit", methods=["PUT"])
 def edit_assignment():
     form = flask.request.form
