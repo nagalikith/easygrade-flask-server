@@ -1,47 +1,56 @@
 import import_helper as ih
 import subprocess
 import json
+import os
 
 
 def make_dir(abs_dir_path):
-  subprocess.run(["mkdir \"{}\"".format(abs_dir_path)], check=True, shell=True)
+    try:
+        os.makedirs(abs_dir_path, exist_ok=True)  # Use os.makedirs for creating directories
+    except Exception as e:
+        print(f"Error creating directory {abs_dir_path}: {e}")
+
 
 def list_dir_contents(abs_dir_path):
-  print(abs_dir_path)
-  ls_outp = subprocess.run(["ls \"{}\"".format(abs_dir_path)], capture_output=True, check=True, shell=True)
-  ls_str = ls_outp.stdout.decode().strip()
-  if (ls_str == ""):
-    ls_list = []
-  else:
-    ls_list = ls_str.split('\n')
-  return ls_list
+    try:
+        print(abs_dir_path)
+        ls_outp = subprocess.run(["ls", abs_dir_path], capture_output=True, check=True)
+        ls_str = ls_outp.stdout.decode().strip()
+        return ls_str.split('\n') if ls_str else []
+    except subprocess.CalledProcessError as e:
+        print(f"Error listing directory contents: {e}")
+        return []
+
 
 def rm_dir(abs_dir_path):
-  subprocess.run(["rm -rf \"{}\"".format(abs_dir_path)], check=True, shell=True)
+    try:
+        subprocess.run(["rm", "-rf", abs_dir_path], check=True)
+    except subprocess.CalledProcessError as e:
+        print(f"Error removing directory {abs_dir_path}: {e}")
+
 
 def write_file(abs_file_path, content, content_type="text"):
-  f = open("{}".format(abs_file_path), 'w')
-  if (content_type == "text"):
-    f.write(content)
-  elif (content_type == "json" and type(content) == dict):
-    json.dump(content, f)
-  else:
-    f.close()
-    raise(ValueError("Unrecognized Content Type"))
-  f.close()
+    try:
+        with open(abs_file_path, 'w') as f:
+            if content_type == "text":
+                f.write(content)
+            elif content_type == "json" and isinstance(content, dict):
+                json.dump(content, f)
+            else:
+                raise ValueError("Unrecognized Content Type")
+    except Exception as e:
+        print(f"Error writing to file {abs_file_path}: {e}")
+
 
 def read_file(abs_file_path, content_type="text"):
-  res = ''
-
-  f = open("{}".format(abs_file_path), 'r')
-
-  if (content_type == "text"):
-    res = f.read()
-  elif (content_type == "json"):
-    res = json.load(f)
-  else:
-    f.close()
-    raise(ValueError("Unrecognized Content Type"))
-
-  f.close()
-  return res
+    try:
+        with open(abs_file_path, 'r') as f:
+            if content_type == "text":
+                return f.read()
+            elif content_type == "json":
+                return json.load(f)
+            else:
+                raise ValueError("Unrecognized Content Type")
+    except Exception as e:
+        print(f"Error reading file {abs_file_path}: {e}")
+        return None

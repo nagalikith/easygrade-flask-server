@@ -3,74 +3,82 @@
 import sqlalchemy
 import import_helper as ih
 import time
-import random
 
-
+# Retrieve database connection info from environment variables
 db_info = ih.get_env_val("DB_INFO")
 conn_str = "{}://{}:{}@{}:{}/{}".format(
-  db_info["dbms_name"],
-  db_info["username"], db_info["password"],
-  db_info["host"], db_info["port"], db_info["name"]
+    db_info["dbms_name"],
+    db_info["username"], db_info["password"],
+    db_info["host"], db_info["port"], db_info["name"]
 )
 max_time_conn = db_info["max_time_connection"]
-print("CONN STR:")
-engine = sqlalchemy.create_engine(conn_str)
+
+# Initialize SQLAlchemy engine with connection pooling
+engine = sqlalchemy.create_engine(
+    conn_str,
+    pool_size=10,          # Number of connections to maintain in the pool
+    max_overflow=5,        # Allow up to 5 additional connections beyond pool_size
+    pool_timeout=30,       # Seconds to wait for a connection to become available
+    pool_recycle=1800      # Recycle connections every 1800 seconds (30 minutes)
+)
 
 class DBConnection:
-  
-  def __init__(self):  
-    self.start_time = time.time()
-    self.connection = engine.connect()
-    self.isOn = False
+    """
+    A class to manage database interactions using pooled connections.
+    """
 
-  def execute(self, stmt, listOfDict=None):
-    self.isOn = True
+    def __init__(self):
+        """
+        Initializes a database connection and starts a timer for connection age.
+        """
+        self.start_time = time.time()
+        self.connection = engine.connect()  # Uses a pooled connection
 
-    if (listOfDict == None):
-      rp = self.connection.execute(stmt)
-    else:
-      rp = self.connection.execute(stmt, listOfDict)
-      
-    self.connection.commit()
-    self.isOn = False
-    return rp
+    def execute(self, stmt, listOfDict=None):
+        """
+        Executes a given SQL statement on the current connection.
 
-  def isBusy(self):
-    return self.isOn
+        Args:
+            stmt: The SQL statement to execute.
+            listOfDict: Optional list of dictionary parameters for the SQL statement.
 
-  def age(self):
-    return (time.time() - self.start_time)
+        Returns:
+            The result of the executed statement.
+        """
+        try:
+            if listOfDict is None:
+                rp = self.connection.execute(stmt)
+            else:
+                rp = self.connection.execute(stmt, listOfDict)
 
-  def terminate(self):
-    self.connection.close()
+            self.connection.commit()  # Commit transaction after execution
+            return rp
+        except Exception as e:
+            self.connection.rollback()  # Rollback transaction on error
+            raise e
+        finally:
+            self.connection.close()  # Close the connection to return it to the pool
 
-conn_info = {"connections": []}
+    def age(self):
+        """
+        Calculate the age of the connection since its creation.
 
-def del_old_connections():
-  young_connections = []
-  for conn in conn_info["connections"]:
-    if (conn.age() > max_time_conn):
-      conn.terminate()
-    else:
-      young_connections.append(conn)
-  conn_info["connections"] = young_connections
+        Returns:
+            float: The age of the connection in seconds.
+        """
+        return time.time() - self.start_time
 
 def run_stmt(stmt):
-  del_old_connections()
-  
-  rp = None
+    """
+    Executes an SQL statement using a pooled database connection.
 
-  if (len(conn_info["connections"]) == 0):
+    Args:
+        stmt: The SQL statement to execute.
+
+    Returns:
+        The result of the SQL execution.
+    """
     conn = DBConnection()
-    rp = conn.execute(stmt)
-    conn_info["connections"].append(conn)
-
-  else:
-    ind = random.randint(0, len(conn_info["connections"]) - 1) 
-    conn = conn_info["connections"].pop(ind)
-    rp = conn.execute(stmt)
-    conn_info["connections"].append(conn)
-
-  return rp
+    return conn.execute(stmt)
 
 ## EOF

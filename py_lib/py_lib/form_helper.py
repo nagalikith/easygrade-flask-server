@@ -1,5 +1,7 @@
 import json
 import time
+
+from flask import request
 import import_helper as ih
 create_assn_fields = (("sel_lang", "json"), ("title", "text"), ("description", "text"), ("total points", "int"), ("max attempts", "int"), ("test cases", "json"))
 
@@ -13,27 +15,42 @@ def add_codes(sc, res_dict):
     res_dict["succ_id"] = sc["succ_id"]
     del sc["succ_id"]
 
-def create_formdict(form, field_list):
-  res = {}
-  for field_name, field_type in field_list:
-    if (form.get(field_name) == None):
-      raise ValueError("Required field {} not present in form".format(field_name))
-    else:
-      if (field_type == "text"):
-        res[field_name] = form.get(field_name)
-      elif (field_type == "int"):
-        res[field_name] = int(form.get(field_name))
-      elif (field_type == "float"):
-        res[field_name] = float(form.get(field_name))
-      elif (field_type == "json"):
-        res[field_name] = json.loads(form.get(field_name))
-      else:
-        raise ValueError("Invalid field type {}".format(field_type))
-  
-  return res
+def create_json_dict(field_list):
+    """
+    Converts JSON data from a Flask request into a dictionary
+    based on the specified field types.
+
+    :param field_list: A list of tuples where each tuple contains 
+                       a field name and its expected type (e.g., 'text', 'int', 'float', 'json').
+    :raises ValueError: If a required field is missing or an invalid field type is provided.
+    :return: A dictionary containing the processed fields.
+    """
+    # Get JSON data from the request
+    data = request.get_json()
+
+    if data is None:
+        raise ValueError("No JSON data provided")
+
+    res = {}
+    for field_name, field_type in field_list:
+        if field_name not in data:
+            raise ValueError("Required field '{}' not present in JSON".format(field_name))
+        else:
+            if field_type == "text":
+                res[field_name] = data[field_name]
+            elif field_type == "int":
+                res[field_name] = int(data[field_name])
+            elif field_type == "float":
+                res[field_name] = float(data[field_name])
+            elif field_type == "json":
+                res[field_name] = json.loads(data[field_name])
+            else:
+                raise ValueError("Invalid field type '{}' for field '{}'".format(field_type, field_name))
+
+    return res
 
 def create_assn_formdict(form):
-  res = create_formdict(form, create_assn_fields)
+  res = create_json_dict(form, create_assn_fields)
   res["__last_modified"] = time.time()
   res["__len_testcases"] = len(res["test cases"])
   return res
