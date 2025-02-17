@@ -4,10 +4,10 @@ import import_helper as ih
 import flask
 import json
 
-bp = flask.Blueprint("user_rel", __name__, template_folder="templates", static_folder="static")
+bp = flask.Blueprint("user_rel", __name__)
 
 @bp.route("/user/logoff")
-@ih.handle_login
+
 def logoff(userid):
   del flask.session["userid"]
   del flask.session["eph_pass"]
@@ -15,7 +15,7 @@ def logoff(userid):
   return flask.redirect(flask.url_for("user_rel.get_login_page"))
 
 @bp.route("/user/view")
-@ih.handle_login
+
 def get_userinfo_page(userid):
   
   pg_info = {}
@@ -43,7 +43,7 @@ def get_userinfo_page(userid):
     return flask.redirect(flask.url_for("get_home_page"))
 
 @bp.route("/user/addreq", methods=["POST"])
-@ih.handle_login
+
 def add_user(userid):
   
   try: 
@@ -71,7 +71,7 @@ def add_user(userid):
     return flask.redirect(flask.url_for("get_home_page"))
 
 @bp.route("/user/add")
-@ih.handle_login
+
 def get_adduser_page(userid):
 
   pg_info = {"endpoint_useradd": flask.url_for("user_rel.add_user")}
@@ -91,7 +91,7 @@ def get_adduser_page(userid):
     return flask.redirect(flask.url_for("get_home_page"))
 
 @bp.route("/users")
-@ih.handle_login
+
 def get_users_page(userid):
   
   pg_info = {}
@@ -113,7 +113,7 @@ def get_users_page(userid):
     return flask.redirect(flask.url_for("get_home_page"))
 
 @bp.route("/account/c_password")
-@ih.handle_login
+
 def get_password_change_page(userid):
   pg_info = {"endpoint_password_c": flask.url_for("user_rel.change_password")}
   ih.libs["form_helper"].add_codes(flask.session, pg_info)
@@ -125,7 +125,7 @@ def get_password_change_page(userid):
   )
 
 @bp.route("/account/c_passwordreq", methods=["POST"])
-@ih.handle_login
+
 def change_password(userid):
   try:
     form = flask.request.form
@@ -145,7 +145,7 @@ def change_password(userid):
     return flask.redirect(flask.url_for("user_rel.get_password_change_page"))
 
 @bp.route("/account/c_email")
-@ih.handle_login
+
 def get_email_change_page(userid):
 
   pg_info = {"endpoint_email_c": flask.url_for("user_rel.change_email")}
@@ -159,7 +159,7 @@ def get_email_change_page(userid):
   )
 
 @bp.route("/account/c_emailreq", methods=["POST"])
-@ih.handle_login
+
 def change_email(userid):
   try:
     form = flask.request.form
@@ -186,7 +186,7 @@ def change_email(userid):
     return flask.redirect(flask.url_for("user_rel.get_email_change_page"))
 
 @bp.route("/account")
-@ih.handle_login
+
 def get_account_page(userid):
 
   row = ih.libs["db_userop"].get_user_info(userid=userid)
@@ -207,59 +207,5 @@ def get_account_page(userid):
   pg_info["user_info"] = user_info
 
   return flask.render_template("account.html", pg_info=json.dumps(pg_info))
-
-@bp.route("/login")
-def get_login_page():
-
-  pg_info = {"endpoint_validate": flask.url_for("user_rel.verify_user")}
-
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-
-  try:
-
-    ver_info = ih.libs["db_userop"].verify_eph_cred(
-      flask.session.get("userid"),
-      flask.session.get("eph_pass")
-    )
-    
-
-    if (ver_info["status"] and not(ver_info["upd_info"]["update"]) and (ver_info["upd_info"]["action"] == None)):
-      return flask.redirect(flask.url_for("get_home_page"))
-
-    else:
-      return flask.render_template("login.html", pg_info=json.dumps(pg_info))
-  
-  except:
-    return flask.render_template("login.html", pg_info=json.dumps(pg_info))
-
-## delete this
-# @bp.route("/login/usercred")
-# @ih.handle_login
-# def get_user_cred(userd):
-#   return "<p>{}: {}</p>".format(
-#     userid, flask.session["eph_pass"]
-#   ) 
-
-@bp.route("/verify", methods=["POST"])
-def verify_user():
-  try:
-    form = flask.request.form
-    username = form.get("username")
-    password = form.get("password")
-    valid_info = ih.libs["user_auth"].validate_login(username, password)
-
-    if (valid_info["status"]):
-      cred = valid_info["eph_cred"]
-      flask.session["userid"] = cred["userid"]  
-      flask.session["eph_pass"] =  cred["eph_pass"]
-      return flask.redirect(flask.url_for("get_home_page"))
-    
-    else:
-      flask.session["error_id"] = "e01" 
-      return (flask.redirect(flask.url_for("user_rel.get_login_page")))
-
-  except:
-    flask.session["error_id"] = "e01" 
-    return (flask.redirect(flask.url_for("user_rel.get_login_page")))
 
 ## EOF

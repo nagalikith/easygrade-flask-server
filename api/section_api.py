@@ -11,7 +11,7 @@ api = Api(app)
 bp = Blueprint("sec_rel", __name__, template_folder="templates", static_folder="static")
 
 class SectionList(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {}
         sect_info = None
@@ -27,7 +27,7 @@ class SectionList(Resource):
         return jsonify(pg_info)
 
 class Section(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {}
         try:
@@ -54,7 +54,7 @@ class Section(Resource):
             return jsonify({"error": "Invalid Section Id"})
 
 class SectionUsers(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {}
         try:
@@ -76,7 +76,7 @@ class SectionUsers(Resource):
             return jsonify({"error": "Invalid Section Id"})
 
 class CreateSection(Resource):
-    @ih.handle_login
+    
     def get(self, userid):
         pg_info = {"endpoint_createsec": "/api/section/create"}
         try:
@@ -88,7 +88,7 @@ class CreateSection(Resource):
         except:
             return jsonify({"error": "Invalid Section Id"})
 
-    @ih.handle_login
+    
     def post(self, userid):
         try:
             if not ih.libs["user_auth"].is_admin(userid):
