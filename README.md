@@ -1,15 +1,28 @@
 # easygrade-flask-server
 
-### Initial Setup
-`mkdir submissions` (in the apps root directory)
+FastAPI backend for EasyGrade, serving assignment, submission, and section APIs.
 
-set environment variables via `.env` (see `.env.example`)
+### Initial Setup
+`mkdir submissions` (in the app root directory)
+`mkdir assignments`
+
+Create a `.env` file (see `.env.example`) and fill in:
+- `DB_INFO` (JSON)
+- `AWS_CRED` + `AWS_BUCKET`
+- `JWT_SECRET_KEY`
+- `VISION_OCR_*` (if using vision OCR)
 
 To run the app type 
 
 uvicorn app.main:app --reload --host 0.0.0.0 --port 5050
 
+### Project Layout
+- `app/main.py` is the FastAPI entry point.
+- `app/routers/` contains API and template routes.
+- `app/py_lib/` contains shared libs (DB, file ops, models).
+
 ### API
+See `app/routers/` for current endpoints. Below is a legacy list that may not be exhaustive after the FastAPI migration.
 
 ### /api/v1.0/assignments
 
