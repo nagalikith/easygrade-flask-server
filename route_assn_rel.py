@@ -1,4 +1,6 @@
+import os
 import threading
+import time
 from typing import Dict
 import flask
 import json
@@ -7,6 +9,8 @@ import sqlalchemy as sa
 from dotenv import load_dotenv
 import boto3
 from datetime import datetime
+from werkzeug.utils import secure_filename
+import py_lib.answer_extractor as answer_extractor
 load_dotenv()
 
 from flask_jwt_extended import jwt_required, get_jwt_identity
@@ -14,6 +18,7 @@ tables_info = ih.libs["db_schema"].tables_info
 bp = flask.Blueprint("assign_op", __name__)
 from enum import Enum
 ASSIGNMENT_DIR = ih.get_env_val("PATH_ASSN_DIR_PAR")
+assignment_cache = {}
 
 s3 = boto3.client('s3')
 ASSIGNMENT_BUCKET = 'snaga-dev-cleferr-ai'
@@ -146,23 +151,34 @@ def submit_assignment(assignment_id):
     submission = flask.request.files.get("submission")
     if not submission:
         return flask.jsonify({"error": "Submission file required"}), 400
-
-    submission_dir = f"{ASSIGNMENT_DIR}{assignment_id}/submissions/{student_id}"
-    ih.libs["fileop_helper"].make_dir(submission_dir)
-
     assignment_info = _get_assignment_info(assignment_id)
-    assignment_type = AssignmentType(assignment_info.get("exam_type"))
+    assignment_type = _infer_assignment_type(assignment_info, submission.filename)
 
     if assignment_type == AssignmentType.CODE:
         return _handle_code_submission(assignment_id, student_id, submission)
-    else:
-        return _handle_file_submission(assignment_id, student_id, submission)
+    return _handle_file_submission(assignment_id, student_id, submission)
 
 def _get_assignment_info(assignment_id: str) -> Dict:
     if assignment_id not in assignment_cache:
-        file_path = f"{ASSIGNMENT_DIR}{assignment_id}/__assn_info.json"
-        assignment_cache[assignment_id] = ih.libs["fileop_helper"].read_file(file_path, "json")
+        file_path = os.path.join(ASSIGNMENT_DIR, assignment_id, "__assn_info.json")
+        if os.path.exists(file_path):
+            assignment_cache[assignment_id] = ih.libs["fileop_helper"].read_file(file_path, "json")
+        else:
+            assignment_cache[assignment_id] = {}
     return assignment_cache[assignment_id]
+
+
+def _infer_assignment_type(assignment_info: Dict, filename: str) -> AssignmentType:
+    assn_type = assignment_info.get("exam_type") or assignment_info.get("assignmentType")
+    if assn_type in [member.value for member in AssignmentType]:
+        return AssignmentType(assn_type)
+
+    _, ext = os.path.splitext(filename.lower())
+    if ext in [".py", ".c", ".cpp", ".rb"]:
+        return AssignmentType.CODE
+    if ext == ".pdf":
+        return AssignmentType.PDF
+    return AssignmentType.IMAGE
 
 def _setup_code_assignment(assignment_id: str, info: Dict):
     threads = []
@@ -191,19 +207,133 @@ def _handle_code_submission(assignment_id: str, student_id: str, submission) -> 
     test_results = _run_tests(assignment_id, submission_path)
     grade = _calculate_grade(assignment_id, test_results)
     
-    return jsonify({"grade": grade, "test_results": test_results})
+    return flask.jsonify({"grade": grade, "test_results": test_results})
 
 def _handle_file_submission(assignment_id: str, student_id: str, submission) -> Dict:
+    submission_id = ih.libs["hex_rel"].gen_hex()
     filename = secure_filename(submission.filename)
-    submission_path = f"{ASSIGNMENT_DIR}{assignment_id}/submissions/{student_id}/{filename}"
+    submission_dir = os.path.join(
+        ASSIGNMENT_DIR, assignment_id, "submissions", student_id, submission_id)
+    ih.libs["fileop_helper"].make_dir(submission_dir)
+    submission_path = os.path.join(submission_dir, filename)
     submission.save(submission_path)
-    
-    ih.libs["s3_rel"].write_to_s3(
-        submission_path,
-        f"assignments/{assignment_id}/submissions/{student_id}/{filename}"
-    )
-    
-    return flask.jsonify({"status": "success"})
+
+    answers_dir = os.path.join(submission_dir, "answers")
+    assignment_dir = os.path.join(ASSIGNMENT_DIR, assignment_id)
+    template_boxes = answer_extractor.load_template_boxes(assignment_dir)
+    extraction_error = None
+    try:
+        answer_extractor.extract_submission_answers(
+            submission_path,
+            answers_dir,
+            template_boxes=template_boxes,
+            ocr_enabled=True
+        )
+    except Exception as exc:
+        extraction_error = str(exc)
+
+    meta = {
+        "submission_id": submission_id,
+        "student_id": student_id,
+        "assignment_id": assignment_id,
+        "file_name": filename,
+        "submitted_at": int(time.time()),
+        "answers_index": os.path.join("answers", answer_extractor.DEFAULT_INDEX_NAME)
+    }
+    ih.libs["fileop_helper"].write_file(
+        os.path.join(submission_dir, "submission_meta.json"), meta, "json")
+
+    response = {
+        "status": "success",
+        "submission_id": submission_id,
+        "answers_extracted": extraction_error is None
+    }
+    if extraction_error:
+        response["extraction_error"] = extraction_error
+    return flask.jsonify(response)
+
+
+@bp.route("/assignments/<assignment_id>/questions/<int:question_num>/answers", methods=["GET"])
+def list_question_answers(assignment_id: str, question_num: int):
+    submissions_root = os.path.join(ASSIGNMENT_DIR, assignment_id, "submissions")
+    if not os.path.isdir(submissions_root):
+        return flask.jsonify({
+            "assignment_id": assignment_id,
+            "question_num": question_num,
+            "answers": []
+        })
+
+    answers = []
+    for student_id in os.listdir(submissions_root):
+        student_dir = os.path.join(submissions_root, student_id)
+        if not os.path.isdir(student_dir):
+            continue
+        for submission_id in os.listdir(student_dir):
+            submission_dir = os.path.join(student_dir, submission_id)
+            if not os.path.isdir(submission_dir):
+                continue
+            index_path = os.path.join(
+                submission_dir, "answers", answer_extractor.DEFAULT_INDEX_NAME)
+            if not os.path.exists(index_path):
+                continue
+            try:
+                with open(index_path, "r") as handle:
+                    index = json.load(handle)
+            except Exception:
+                continue
+            for answer in index.get("answers", []):
+                if answer.get("question_num") != question_num:
+                    continue
+                answers.append({
+                    "student_id": student_id,
+                    "submission_id": submission_id,
+                    "page": answer.get("page"),
+                    "bbox": answer.get("bbox"),
+                    "answer_path": os.path.join(
+                        ASSIGNMENT_DIR, assignment_id, "submissions",
+                        student_id, submission_id, "answers",
+                        answer.get("path", "")),
+                    "download_url": flask.url_for(
+                        "assign_op.download_answer_file",
+                        assignment_id=assignment_id,
+                        student_id=student_id,
+                        submission_id=submission_id,
+                        filename=answer.get("path", "")
+                    ),
+                    "source_file": index.get("source_file"),
+                    "detection": answer.get("source"),
+                    "ocr_text": answer.get("ocr_text"),
+                    "ocr_confidence": answer.get("ocr_confidence"),
+                    "ocr_error": answer.get("ocr_error")
+                })
+
+    return flask.jsonify({
+        "assignment_id": assignment_id,
+        "question_num": question_num,
+        "answers": answers
+    })
+
+
+@bp.route(
+    "/assignments/<assignment_id>/submissions/<student_id>/<submission_id>/answers/<path:filename>",
+    methods=["GET"]
+)
+def download_answer_file(assignment_id: str, student_id: str,
+                         submission_id: str, filename: str):
+    answers_dir = os.path.join(
+        ASSIGNMENT_DIR, assignment_id, "submissions", student_id, submission_id, "answers")
+    if not os.path.isdir(answers_dir):
+        return flask.jsonify({"error": "Answers directory not found"}), 404
+
+    safe_root = os.path.abspath(answers_dir)
+    safe_path = os.path.abspath(os.path.join(answers_dir, filename))
+    if not safe_path.startswith(safe_root + os.sep):
+        return flask.jsonify({"error": "Invalid file path"}), 400
+    if not os.path.isfile(safe_path):
+        return flask.jsonify({"error": "File not found"}), 404
+
+    download = flask.request.args.get("download") == "1"
+    return flask.send_file(safe_path, as_attachment=download)
 
 def _delete_assignment_files(assignment_id: str, delete_s3: bool = True):
     ih.libs["fileop_helper"].rm_dir(f"{ASSIGNMENT_DIR}{assignment_id}/")

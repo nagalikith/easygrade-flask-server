@@ -8,7 +8,12 @@ itsdangerous
 Jinja2
 jmespath
 MarkupSafe
+numpy
+opencv-python
+PyMuPDF
 python-dateutil
+python-dotenv
+requests
 s3transfer
 six
 urllib3
