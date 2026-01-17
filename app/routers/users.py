@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import import_helper as ih
 from app.core.web_helpers import json_payload, redirect_to, safe_url_for, template_response
@@ -9,7 +9,10 @@ router = APIRouter()
 
 
 def get_user_id(request: Request):
-    return request.session.get("userid") or request.query_params.get("userid")
+    user_id = request.session.get("userid")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
 
 
 @router.get("/user/logoff")

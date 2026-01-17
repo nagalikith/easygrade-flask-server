@@ -1,7 +1,7 @@
 from datetime import datetime
 import json
 
-from fastapi import APIRouter, Depends, Request
+from fastapi import APIRouter, Depends, HTTPException, Request
 
 from app import import_helper as ih
 from app.core.auth_utils import get_current_user_id
@@ -11,7 +11,10 @@ router = APIRouter()
 
 
 def get_session_user_id(request: Request):
-    return request.session.get("userid") or request.query_params.get("userid")
+    user_id = request.session.get("userid")
+    if not user_id:
+        raise HTTPException(status_code=401, detail="Authentication required")
+    return user_id
 
 
 def get_term_from_date(date_str):

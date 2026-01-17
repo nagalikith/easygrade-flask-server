@@ -1,7 +1,7 @@
 import logging
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Request
 from pydantic import BaseModel
 
 from app import import_helper as ih
@@ -30,7 +30,7 @@ def validate_login(username: str, password: str) -> Dict[str, Any]:
 
 
 @router.post("/login")
-def handle_login_request(payload: LoginPayload):
+def handle_login_request(request: Request, payload: LoginPayload):
     if not payload.username or not payload.password:
         raise HTTPException(status_code=400, detail="Username and password are required")
 
@@ -39,6 +39,7 @@ def handle_login_request(payload: LoginPayload):
         raise HTTPException(status_code=401, detail="Invalid credentials")
 
     access_token = create_access_token(identity=validation_result["user_id"])
+    request.session["userid"] = validation_result["user_id"]
     return {
         "message": "Login successful",
         "user": payload.username,
@@ -47,7 +48,8 @@ def handle_login_request(payload: LoginPayload):
 
 
 @router.post("/logout")
-def handle_logout_request(user_id: str = Depends(get_current_user_id)):
+def handle_logout_request(request: Request, user_id: str = Depends(get_current_user_id)):
+    request.session.pop("userid", None)
     return {"message": "Logout successful"}
 
 
