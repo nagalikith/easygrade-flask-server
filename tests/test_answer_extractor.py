@@ -10,7 +10,7 @@ import numpy as np
 ROOT_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
 sys.path.insert(0, ROOT_DIR)
 
-from py_lib.answer_extractor import (  # noqa: E402
+from app.py_lib.answer_extractor import (  # noqa: E402
     DEFAULT_INDEX_NAME,
     extract_submission_answers,
     load_template_boxes,

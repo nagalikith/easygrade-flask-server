@@ -3,15 +3,11 @@
 ### Initial Setup
 `mkdir submissions` (in the apps root directory)
 
-set `PYTHONPATH` environment variable to `py_lib/helper_libs` directory (check [this](https://phoenixnap.com/kb/set-environment-variable-mac#ftoc-heading-5) article for mac)
-
-change `ROOT_PATH` in `py_lib/helper_libs/import_helper.py` to the absolute path of the app's directory
-
-make `.env.json` file from the `example.env.json` file located in `py_lib/helper_libs`
+set environment variables via `.env` (see `.env.example`)
 
 To run the app type 
 
-flask --app easygrade-flask-server
+uvicorn app.main:app --reload --host 0.0.0.0 --port 5050
 
 ### API
 
