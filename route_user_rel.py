@@ -1,211 +1,181 @@
-## Clefer AI - Easy Grade, Property of Ryze Educational Tech Pvt Ltd
-
-import import_helper as ih
-import flask
 import json
 
-bp = flask.Blueprint("user_rel", __name__)
+import import_helper as ih
+from fastapi import APIRouter, Depends, Request
 
-@bp.route("/user/logoff")
+from py_lib.web_helpers import json_payload, redirect_to, safe_url_for, template_response
 
-def logoff(userid):
-  del flask.session["userid"]
-  del flask.session["eph_pass"]
-  
-  return flask.redirect(flask.url_for("user_rel.get_login_page"))
+router = APIRouter()
 
-@bp.route("/user/view")
 
-def get_userinfo_page(userid):
-  
-  pg_info = {}
+def get_user_id(request: Request):
+    return request.session.get("userid") or request.query_params.get("userid")
 
-  try: 
-    if (not(ih.libs["user_auth"].is_admin(userid))):
-      flask.session["error_id"] = "e04"
-      raise PermissionError("Only for admin")
 
-    req_userid = flask.request.args.get("userid")
+@router.get("/user/logoff")
+def logoff(request: Request, userid: str = Depends(get_user_id)):
+    request.session.pop("userid", None)
+    request.session.pop("eph_pass", None)
+    return redirect_to(safe_url_for(request, "get_login_page", default="/login"))
 
-    user_info = ih.libs["db_userop"].admin_userview(req_userid)
 
-    pg_info["user_info"] = user_info
-    pg_info["endpoint_users"] = flask.url_for("user_rel.get_users_page")
+@router.get("/user/view")
+def get_userinfo_page(request: Request, userid: str = Depends(get_user_id)):
+    pg_info = {}
+    try:
+        if not ih.libs["user_auth"].is_admin(userid):
+            request.session["error_id"] = "e04"
+            raise PermissionError("Only for admin")
 
-    return flask.render_template(
-      "user_view.html", pg_info=json.dumps(pg_info)
+        req_userid = request.query_params.get("userid")
+        user_info = ih.libs["db_userop"].admin_user_view(req_userid)
+        pg_info["user_info"] = user_info
+        pg_info["endpoint_users"] = safe_url_for(request, "get_users_page", default="/users")
+
+        return template_response(
+            request, "user_view.html", {"pg_info": json_payload(pg_info)}
+        )
+    except ValueError:
+        request.session["error_id"] = "e06"
+        return redirect_to(safe_url_for(request, "get_adduser_page", default="/user/add"))
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_home_page", default="/"))
+
+
+@router.post("/user/addreq")
+async def add_user(request: Request, userid: str = Depends(get_user_id)):
+    try:
+        if not ih.libs["user_auth"].is_admin(userid):
+            request.session["error_id"] = "e04"
+            raise PermissionError("Only for admin")
+
+        form = await request.form()
+        username = form.get("username")
+        email = form.get("email") or None
+        password = form.get("password")
+
+        ih.libs["db_userop"].register_user(username, password, email)
+        request.session["succ_id"] = "s03"
+
+        return redirect_to(safe_url_for(request, "get_users_page", default="/users"))
+    except ValueError:
+        request.session["error_id"] = "e05"
+        return redirect_to(safe_url_for(request, "get_adduser_page", default="/user/add"))
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_home_page", default="/"))
+
+
+@router.get("/user/add")
+def get_adduser_page(request: Request, userid: str = Depends(get_user_id)):
+    pg_info = {"endpoint_useradd": safe_url_for(request, "add_user", default="/user/addreq")}
+    ih.libs["form_helper"].add_codes(request.session, pg_info)
+
+    try:
+        if not ih.libs["user_auth"].is_admin(userid):
+            request.session["error_id"] = "e04"
+            raise PermissionError("Only for admin")
+
+        return template_response(
+            request, "adduser.html", {"pg_info": json_payload(pg_info)}
+        )
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_home_page", default="/"))
+
+
+@router.get("/users")
+def get_users_page(request: Request, userid: str = Depends(get_user_id)):
+    pg_info = {
+        "endpoint_user_v": safe_url_for(request, "get_userinfo_page", default="/user/view"),
+        "endpoint_adduser": safe_url_for(request, "get_adduser_page", default="/user/add"),
+    }
+    ih.libs["form_helper"].add_codes(request.session, pg_info)
+
+    try:
+        if not ih.libs["user_auth"].is_admin(userid):
+            request.session["error_id"] = "e04"
+            raise PermissionError("Only for admin")
+
+        user_info = ih.libs["db_userop"].get_all_users()
+        pg_info["user_info"] = user_info
+        return template_response(
+            request, "users.html", {"pg_info": json_payload(pg_info)}
+        )
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_home_page", default="/"))
+
+
+@router.get("/account/c_password")
+def get_password_change_page(request: Request, userid: str = Depends(get_user_id)):
+    pg_info = {"endpoint_password_c": safe_url_for(
+        request, "change_password", default="/account/c_passwordreq")}
+    ih.libs["form_helper"].add_codes(request.session, pg_info)
+    return template_response(
+        request, "change_password.html", {"pg_info": json_payload(pg_info)}
     )
-  except ValueError:
-    flask.session["error_id"] = "e06"
-    return flask.redirect(flask.url_for("user_rel.get_adduser_page"))
-  except Exception as e:
-    print(e)
-    return flask.redirect(flask.url_for("get_home_page"))
-
-@bp.route("/user/addreq", methods=["POST"])
-
-def add_user(userid):
-  
-  try: 
-    if (not(ih.libs["user_auth"].is_admin(userid))):
-      flask.session["error_id"] = "e04"
-      raise PermissionError("Only for admin")
-
-    form = flask.request.form
-    username = form.get("username") 
-    email = form.get("email")
-    password = form.get("password")
-
-    if (email == ''):
-      email = None
-
-    ih.libs["db_userop"].reg_user(username, password, email)
-    flask.session["succ_id"] = "s03"
-
-    return flask.redirect(flask.url_for("user_rel.get_users_page")) 
-  except ValueError:
-    flask.session["error_id"] = "e05"
-    return flask.redirect(flask.url_for("user_rel.get_adduser_page"))
-  except Exception as e:
-    print(e)
-    return flask.redirect(flask.url_for("get_home_page"))
-
-@bp.route("/user/add")
-
-def get_adduser_page(userid):
-
-  pg_info = {"endpoint_useradd": flask.url_for("user_rel.add_user")}
-
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-
-  try: 
-    if (not(ih.libs["user_auth"].is_admin(userid))):
-      flask.session["error_id"] = "e04"
-      raise PermissionError("Only for admin")
 
 
-    return flask.render_template(
-      "adduser.html", pg_info=json.dumps(pg_info)
-    )  
-  except:
-    return flask.redirect(flask.url_for("get_home_page"))
+@router.post("/account/c_passwordreq")
+async def change_password(request: Request, userid: str = Depends(get_user_id)):
+    try:
+        form = await request.form()
+        curr_password = form.get("curr_password")
+        new_password = form.get("new_password")
 
-@bp.route("/users")
+        if not ih.libs["user_auth"].authenticate_using_password(userid, curr_password):
+            request.session["error_id"] = "e02"
+            raise PermissionError("Authentication Failed")
 
-def get_users_page(userid):
-  
-  pg_info = {}
-  pg_info["endpoint_user_v"] = flask.url_for("user_rel.get_userinfo_page")
-  pg_info["endpoint_adduser"] = flask.url_for("user_rel.get_adduser_page");
+        ih.libs["db_userop"].update_password(userid, new_password)
+        request.session["succ_id"] = "s02"
 
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
+        return redirect_to(safe_url_for(request, "get_account_page", default="/account"))
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_password_change_page", default="/account/c_password"))
 
-  try: 
-    if (not(ih.libs["user_auth"].is_admin(userid))):
-      flask.session["error_id"] = "e04"
-      raise PermissionError("Only for admin")
-    
-    user_info = ih.libs["db_userop"].get_all_users()
-    pg_info["user_info"] = user_info
-    return flask.render_template("users.html", pg_info=json.dumps(pg_info))
-  except Exception as e:
-    print(e)
-    return flask.redirect(flask.url_for("get_home_page"))
 
-@bp.route("/account/c_password")
-
-def get_password_change_page(userid):
-  pg_info = {"endpoint_password_c": flask.url_for("user_rel.change_password")}
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-
-  return flask.render_template(
-    "change_password.html", pg_info=json.dumps(
-      pg_info
+@router.get("/account/c_email")
+def get_email_change_page(request: Request, userid: str = Depends(get_user_id)):
+    pg_info = {"endpoint_email_c": safe_url_for(
+        request, "change_email", default="/account/c_emailreq")}
+    ih.libs["form_helper"].add_codes(request.session, pg_info)
+    return template_response(
+        request, "change_email.html", {"pg_info": json_payload(pg_info)}
     )
-  )
 
-@bp.route("/account/c_passwordreq", methods=["POST"])
 
-def change_password(userid):
-  try:
-    form = flask.request.form
-    curr_password = form.get("curr_password")
-    new_password = form.get("new_password")
+@router.post("/account/c_emailreq")
+async def change_email(request: Request, userid: str = Depends(get_user_id)):
+    try:
+        form = await request.form()
+        password = form.get("password")
+        email = form.get("email") or None
 
-    if (not(ih.libs["user_auth"].authenticate_using_password(userid, curr_password))):
-      flask.session["error_id"] = "e02"
-      raise PermissionError("Authentication Failed")
-    
-    ih.libs["db_userop"].upd_passwd(userid, new_password) 
-    flask.session["succ_id"] = "s02"
+        if email is not None and not ih.libs["form_helper"].validate_email(email):
+            request.session["error_id"] = "e03"
+            raise ValueError("Email Change Failed")
 
-    return flask.redirect(flask.url_for("user_rel.get_account_page"))
+        if not ih.libs["user_auth"].authenticate_using_password(userid, password):
+            request.session["error_id"] = "e02"
+            raise PermissionError("Authentication Failed")
 
-  except:
-    return flask.redirect(flask.url_for("user_rel.get_password_change_page"))
+        ih.libs["db_userop"].update_email(userid, email)
+        request.session["succ_id"] = "s01"
 
-@bp.route("/account/c_email")
+        return redirect_to(safe_url_for(request, "get_account_page", default="/account"))
+    except Exception:
+        return redirect_to(safe_url_for(request, "get_email_change_page", default="/account/c_email"))
 
-def get_email_change_page(userid):
 
-  pg_info = {"endpoint_email_c": flask.url_for("user_rel.change_email")}
-
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-
-  return flask.render_template(
-    "change_email.html", pg_info=json.dumps(
-      pg_info
+@router.get("/account")
+def get_account_page(request: Request, userid: str = Depends(get_user_id)):
+    row = ih.libs["db_userop"].get_user_info(userid=userid)
+    pg_info = {}
+    ih.libs["form_helper"].add_codes(request.session, pg_info)
+    pg_info["endpoint_chng_email"] = safe_url_for(
+        request, "get_email_change_page", default="/account/c_email")
+    pg_info["endpoint_chng_password"] = safe_url_for(
+        request, "get_password_change_page", default="/account/c_password")
+    pg_info["user_info"] = row
+    return template_response(
+        request, "account.html", {"pg_info": json_payload(pg_info)}
     )
-  )
-
-@bp.route("/account/c_emailreq", methods=["POST"])
-
-def change_email(userid):
-  try:
-    form = flask.request.form
-    password = form.get("password")
-    email = form.get("email")
-
-    if (email == ''):
-      email = None
-
-    if ((email != None) and  not(ih.libs["form_helper"].validate_email(email))):
-      flask.session["error_id"] = "e03"
-      raise ValueError("Email Change Failed")
-
-    if (not(ih.libs["user_auth"].authenticate_using_password(userid, password))):
-      flask.session["error_id"] = "e02"
-      raise PermissionError("Authentication Failed")
-    
-    ih.libs["db_userop"].upd_email(userid, email) 
-    flask.session["succ_id"] = "s01"
-
-    return flask.redirect(flask.url_for("user_rel.get_account_page"))
-
-  except:
-    return flask.redirect(flask.url_for("user_rel.get_email_change_page"))
-
-@bp.route("/account")
-
-def get_account_page(userid):
-
-  row = ih.libs["db_userop"].get_user_info(userid=userid)
-
-  pg_info = {}
-
-  ih.libs["form_helper"].add_codes(flask.session, pg_info)
-
-  pg_info["endpoint_chng_email"] = flask.url_for("user_rel.get_email_change_page")
-  pg_info["endpoint_chng_password"] = flask.url_for("user_rel.get_password_change_page")
-
-  user_info = {
-    "username": getattr(row, "username"),
-    "email": getattr(row, "email"),
-    "join_time": getattr(row, "reg_epoch")
-  }
-
-  pg_info["user_info"] = user_info
-
-  return flask.render_template("account.html", pg_info=json.dumps(pg_info))
-
-## EOF

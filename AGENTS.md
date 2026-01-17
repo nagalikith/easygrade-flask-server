@@ -11,8 +11,7 @@
 ## Build, Test, and Development Commands
 - `python3 -m venv .venv` then `source .venv/bin/activate` to set up the virtualenv.
 - `pip install -r requirement.txt` installs Python dependencies.
-- `python3 app.py` runs the development server (defaults to `0.0.0.0:5050`).
-- `flask --app easygrade-flask-server` is also supported if you follow README setup.
+- `uvicorn app:app --reload --host 0.0.0.0 --port 5050` runs the FastAPI server.
 - One-time setup: create `assignments/` and `submissions/` at the repo root and set `PYTHONPATH` to `py_lib/helper_libs`.
 
 ## Coding Style & Naming Conventions

@@ -1,97 +1,70 @@
 import os
 import threading
 import time
-from typing import Dict
-import flask
-import json
-import import_helper as ih
-import sqlalchemy as sa
-from dotenv import load_dotenv
-import boto3
 from datetime import datetime
-from werkzeug.utils import secure_filename
-import py_lib.answer_extractor as answer_extractor
-load_dotenv()
-
-from flask_jwt_extended import jwt_required, get_jwt_identity
-tables_info = ih.libs["db_schema"].tables_info
-bp = flask.Blueprint("assign_op", __name__)
 from enum import Enum
+from typing import Dict
+
+import boto3
+import import_helper as ih
+import json
+import sqlalchemy as sa
+from fastapi import APIRouter, Depends, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse
+
+import py_lib.answer_extractor as answer_extractor
+from py_lib.auth_utils import get_current_user_id
+from py_lib.web_helpers import safe_url_for
+
+router = APIRouter()
+tables_info = ih.libs["db_schema"].tables_info
 ASSIGNMENT_DIR = ih.get_env_val("PATH_ASSN_DIR_PAR")
 assignment_cache = {}
 
 s3 = boto3.client('s3')
 ASSIGNMENT_BUCKET = 'snaga-dev-cleferr-ai'
 
+
 class AssignmentType(Enum):
     CODE = "code"
     PDF = "pdf"
     IMAGE = "image"
 
-# Route to create an assignment
-@bp.route("/assignments", methods=["POST"])
-@jwt_required()
-def create_assignment():
-    authord_id = get_jwt_identity()
+
+@router.post("/assignments")
+async def create_assignment(request: Request,
+                            user_id: str = Depends(get_current_user_id)):
+    form = await request.form()
     assignment_id = ih.libs["hex_rel"].gen_hex()
-    assignment_info = flask.request.form.to_dict()
-    
-    assignment_path = f"{ASSIGNMENT_DIR}{assignment_id}/"
+    assignment_info = {
+        key: value
+        for key, value in form.items()
+        if key != "template"
+    }
+
+    assignment_path = os.path.join(ASSIGNMENT_DIR, assignment_id)
     ih.libs["fileop_helper"].make_dir(assignment_path)
-    
-    info_path = f"{assignment_path}__assn_info.json"
-    #ih.libs["fileop_helper"].write_file(info_path, assignment_info, "json")
-    #ih.libs["s3_rel"].write_to_s3(info_path, f"assignments/{assignment_id}/__assn_info.json")
 
     assignment_type = AssignmentType(assignment_info.get("assignmentType"))
     if assignment_type == AssignmentType.CODE:
         _setup_code_assignment(assignment_id, assignment_info)
     elif assignment_type in [AssignmentType.PDF, AssignmentType.IMAGE]:
-        uploaded_file = flask.request.files.get("template")
+        uploaded_file = form.get("template")
         if uploaded_file:
-            release_date = assignment_info.get("releaseDate")
-            due_date = assignment_info.get("dueDate")
-            file_path = f"/tmp/{assignment_id}_{uploaded_file.filename}"
-            uploaded_file.save(file_path)
+            await _handle_assignment_template_upload(
+                assignment_id, user_id, assignment_info, uploaded_file)
 
-            #upload to s3
-            s3_key = f"assignments/{assignment_id}/{uploaded_file.filename}"
-            s3.upload_file(file_path, ASSIGNMENT_BUCKET,s3_key)
-            assn_url = f"https://{ASSIGNMENT_BUCKET}.s3.amazonaws.com/{s3_key}"
-            stmt = sa.insert(tables_info["assn"]["table"]).values(
-                assn_id=assignment_id,
-                assn_title=assignment_info.get("assignmentName"),
-                author_id=authord_id,
-                start_epoch=int(datetime.fromisoformat(release_date).timestamp()) if release_date else None,
-                end_epoch=int(datetime.fromisoformat(due_date).timestamp()) if due_date else None,
-                assn_url=assn_url,
-                last_upd=int(datetime.now().timestamp())
-            )
-
-            #stmt2 = sa.insert(tables_info["assn_acc"]["table"]).values(
-            #    assn_id=assignment_id,
-            #    section_id=assignment_info.get("section_id"),
-            #    user_id= authord_id
-            #)
-            # Execute the insert statement
-            ih.libs["db_connect"].run_stmt(stmt)
-            #ih.libs["db_connect"].run_stmt(stmt2)
+    return {"id": assignment_id}
 
 
-    return flask.jsonify({"id": assignment_id})
-
-
-# To-do
-@bp.route("/api/assignment/edit", methods=["PUT"])
-def edit_assignment():
-    form = flask.request.form
+@router.put("/api/assignment/edit")
+async def edit_assignment(request: Request):
+    form = await request.form()
     assn_id = form.get("assn_id")
-    file = flask.request.files.get("file")
 
     if not assn_id or not form:
-        return {"error": "Assignment ID and form data are required"}, 400
-    
-    # Parse the form data
+        raise HTTPException(status_code=400, detail="Assignment ID and form data are required")
+
     assignment_data = {
         "assignmentType": form.get("assignmentType"),
         "assignmentName": form.get("assignmentName"),
@@ -102,61 +75,66 @@ def edit_assignment():
         "submissionType": form.get("submissionType"),
     }
 
-    # Process the updated assignment data and file
     assn_dict = ih.libs["form_helper"].create_assn_formdict(assignment_data)
-    ih.libs["assn_fileop"].edit_assignment(assn_id, assn_dict, file)
-    return {"operation": "successful"}, 200
+    ih.libs["assn_fileop"].edit_assignment(assn_id, assn_dict, form.get("file"))
+    return {"operation": "successful"}
 
-# Route to delete an assignment
-@bp.route("/api/assignment/delete", methods=["DELETE"])
-def delete_assignment(): 
-    assn_id = flask.request.form.get("assignment_id")
+
+@router.delete("/api/assignment/delete")
+async def delete_assignment(request: Request):
+    form = await request.form()
+    assn_id = form.get("assignment_id")
     if not assn_id:
-        return {"error": "Assignment ID is required"}, 400
+        raise HTTPException(status_code=400, detail="Assignment ID is required")
 
-    ih.libs["assn_fileop"].del_assn(assn_id)
-    return {"operation": "successful"}, 200
+    delete_fn = getattr(ih.libs["assn_fileop"], "delete_assignment", None)
+    if delete_fn is None:
+        delete_fn = getattr(ih.libs["assn_fileop"], "del_assn", None)
+    if delete_fn is None:
+        raise HTTPException(status_code=501, detail="Delete not implemented")
+    delete_fn(assn_id)
+    return {"operation": "successful"}
 
-# Route to list assignments
-@bp.route("/api/assignments", methods=["GET"])
+
+@router.get("/api/assignments")
 def list_assignments():
     assn_ids = ih.libs["assn_fileop"].list_assignment_ids()
     assignments = [
         {
             "id": assn_id,
-            "title": ih.libs["assn_fileop"].get_assn_prop(assn_id, "title"),
-            "description": ih.libs["assn_fileop"].get_assn_prop(assn_id, "description")
+            "title": ih.libs["assn_fileop"].get_assignment_property(assn_id, "title"),
+            "description": ih.libs["assn_fileop"].get_assignment_property(assn_id, "description")
         }
         for assn_id in assn_ids
     ]
-    return {"assignments": assignments}, 200
+    return {"assignments": assignments}
 
-# Route to copy an assignment
-@bp.route("/api/assignment/copy", methods=["POST"])
-def copy_assignment(): 
-    assn_id = flask.request.form.get("assignment_id")
+
+@router.post("/api/assignment/copy")
+async def copy_assignment(request: Request):
+    form = await request.form()
+    assn_id = form.get("assignment_id")
     if not assn_id:
-        return {"error": "Assignment ID is required"}, 400
+        raise HTTPException(status_code=400, detail="Assignment ID is required")
 
-    # Logic to copy assignment based on ID
-    new_assn_id = ih.libs["assn_fileop"].copy_assignment(assn_id)
-    return {"operation": "successful", "new_assignment_id": new_assn_id}, 201
+    copy_fn = getattr(ih.libs["assn_fileop"], "copy_assignment", None)
+    if copy_fn is None:
+        raise HTTPException(status_code=501, detail="Copy assignment not implemented")
+    new_assn_id = copy_fn(assn_id)
+    return {"operation": "successful", "new_assignment_id": new_assn_id}
 
-@bp.route("/assignments/<assignment_id>/submissions", methods=["POST"])
-def submit_assignment(assignment_id):
-    student_id = flask.request.form.get("student_id")
-    if not student_id:
-        return flask.jsonify({"error": "Student ID required"}), 400
 
-    submission = flask.request.files.get("submission")
-    if not submission:
-        return flask.jsonify({"error": "Submission file required"}), 400
+@router.post("/assignments/{assignment_id}/submissions")
+async def submit_assignment(assignment_id: str,
+                            student_id: str = Form(...),
+                            submission: UploadFile = File(...)):
     assignment_info = _get_assignment_info(assignment_id)
     assignment_type = _infer_assignment_type(assignment_info, submission.filename)
 
     if assignment_type == AssignmentType.CODE:
-        return _handle_code_submission(assignment_id, student_id, submission)
-    return _handle_file_submission(assignment_id, student_id, submission)
+        return await _handle_code_submission(assignment_id, student_id, submission)
+    return await _handle_file_submission(assignment_id, student_id, submission)
+
 
 def _get_assignment_info(assignment_id: str) -> Dict:
     if assignment_id not in assignment_cache:
@@ -180,43 +158,67 @@ def _infer_assignment_type(assignment_info: Dict, filename: str) -> AssignmentTy
         return AssignmentType.PDF
     return AssignmentType.IMAGE
 
+
 def _setup_code_assignment(assignment_id: str, info: Dict):
     threads = []
     for i, test_case in enumerate(info.get("test_cases", [])):
         for file_type in ["input", "output"]:
             thread = threading.Thread(
                 target=ih.libs["fileop_helper"].write_file,
-                args=(f"{ASSIGNMENT_DIR}{assignment_id}/__{file_type}_file_{i}", 
+                args=(os.path.join(ASSIGNMENT_DIR, assignment_id, f"__{file_type}_file_{i}"),
                       test_case[file_type])
             )
             threads.append(thread)
             thread.start()
-    
+
     for thread in threads:
         thread.join()
 
-def _handle_code_submission(assignment_id: str, student_id: str, submission) -> Dict:
-    submission_path = f"{ASSIGNMENT_DIR}{assignment_id}/submissions/{student_id}/submission.py"
-    submission.save(submission_path)
-    
-    ih.libs["s3_rel"].write_to_s3(
-        submission_path,
-        f"assignments/{assignment_id}/submissions/{student_id}/submission.py"
+
+async def _handle_assignment_template_upload(assignment_id: str, user_id: str,
+                                             assignment_info: Dict,
+                                             uploaded_file: UploadFile):
+    release_date = assignment_info.get("releaseDate")
+    due_date = assignment_info.get("dueDate")
+    temp_path = os.path.join("/tmp", f"{assignment_id}_{uploaded_file.filename}")
+    await _write_upload_file(uploaded_file, temp_path)
+
+    s3_key = f"assignments/{assignment_id}/{uploaded_file.filename}"
+    s3.upload_file(temp_path, ASSIGNMENT_BUCKET, s3_key)
+    assn_url = f"https://{ASSIGNMENT_BUCKET}.s3.amazonaws.com/{s3_key}"
+    stmt = sa.insert(tables_info["assn"]["table"]).values(
+        assn_id=assignment_id,
+        assn_title=assignment_info.get("assignmentName"),
+        author_id=user_id,
+        start_epoch=int(datetime.fromisoformat(release_date).timestamp()) if release_date else None,
+        end_epoch=int(datetime.fromisoformat(due_date).timestamp()) if due_date else None,
+        assn_url=assn_url,
+        last_upd=int(datetime.now().timestamp())
     )
-    
+    ih.libs["db_connect"].run_stmt(stmt)
+
+
+async def _handle_code_submission(assignment_id: str, student_id: str,
+                                  submission: UploadFile):
+    submission_path = os.path.join(
+        ASSIGNMENT_DIR, assignment_id, "submissions", student_id, "submission.py")
+    ih.libs["fileop_helper"].make_dir(os.path.dirname(submission_path))
+    await _write_upload_file(submission, submission_path)
+
     test_results = _run_tests(assignment_id, submission_path)
     grade = _calculate_grade(assignment_id, test_results)
-    
-    return flask.jsonify({"grade": grade, "test_results": test_results})
+    return {"grade": grade, "test_results": test_results}
 
-def _handle_file_submission(assignment_id: str, student_id: str, submission) -> Dict:
+
+async def _handle_file_submission(assignment_id: str, student_id: str,
+                                  submission: UploadFile):
     submission_id = ih.libs["hex_rel"].gen_hex()
-    filename = secure_filename(submission.filename)
+    filename = _safe_filename(submission.filename)
     submission_dir = os.path.join(
         ASSIGNMENT_DIR, assignment_id, "submissions", student_id, submission_id)
     ih.libs["fileop_helper"].make_dir(submission_dir)
     submission_path = os.path.join(submission_dir, filename)
-    submission.save(submission_path)
+    await _write_upload_file(submission, submission_path)
 
     answers_dir = os.path.join(submission_dir, "answers")
     assignment_dir = os.path.join(ASSIGNMENT_DIR, assignment_id)
@@ -250,18 +252,18 @@ def _handle_file_submission(assignment_id: str, student_id: str, submission) -> 
     }
     if extraction_error:
         response["extraction_error"] = extraction_error
-    return flask.jsonify(response)
+    return response
 
 
-@bp.route("/assignments/<assignment_id>/questions/<int:question_num>/answers", methods=["GET"])
-def list_question_answers(assignment_id: str, question_num: int):
+@router.get("/assignments/{assignment_id}/questions/{question_num}/answers")
+def list_question_answers(request: Request, assignment_id: str, question_num: int):
     submissions_root = os.path.join(ASSIGNMENT_DIR, assignment_id, "submissions")
     if not os.path.isdir(submissions_root):
-        return flask.jsonify({
+        return {
             "assignment_id": assignment_id,
             "question_num": question_num,
             "answers": []
-        })
+        }
 
     answers = []
     for student_id in os.listdir(submissions_root):
@@ -293,8 +295,9 @@ def list_question_answers(assignment_id: str, question_num: int):
                         ASSIGNMENT_DIR, assignment_id, "submissions",
                         student_id, submission_id, "answers",
                         answer.get("path", "")),
-                    "download_url": flask.url_for(
-                        "assign_op.download_answer_file",
+                    "download_url": safe_url_for(
+                        request,
+                        "download_answer_file",
                         assignment_id=assignment_id,
                         student_id=student_id,
                         submission_id=submission_id,
@@ -307,35 +310,53 @@ def list_question_answers(assignment_id: str, question_num: int):
                     "ocr_error": answer.get("ocr_error")
                 })
 
-    return flask.jsonify({
+    return {
         "assignment_id": assignment_id,
         "question_num": question_num,
         "answers": answers
-    })
+    }
 
 
-@bp.route(
-    "/assignments/<assignment_id>/submissions/<student_id>/<submission_id>/answers/<path:filename>",
-    methods=["GET"]
+@router.get(
+    "/assignments/{assignment_id}/submissions/{student_id}/{submission_id}/answers/{filename:path}"
 )
 def download_answer_file(assignment_id: str, student_id: str,
                          submission_id: str, filename: str):
     answers_dir = os.path.join(
         ASSIGNMENT_DIR, assignment_id, "submissions", student_id, submission_id, "answers")
     if not os.path.isdir(answers_dir):
-        return flask.jsonify({"error": "Answers directory not found"}), 404
+        raise HTTPException(status_code=404, detail="Answers directory not found")
 
     safe_root = os.path.abspath(answers_dir)
     safe_path = os.path.abspath(os.path.join(answers_dir, filename))
     if not safe_path.startswith(safe_root + os.sep):
-        return flask.jsonify({"error": "Invalid file path"}), 400
+        raise HTTPException(status_code=400, detail="Invalid file path")
     if not os.path.isfile(safe_path):
-        return flask.jsonify({"error": "File not found"}), 404
+        raise HTTPException(status_code=404, detail="File not found")
 
-    download = flask.request.args.get("download") == "1"
-    return flask.send_file(safe_path, as_attachment=download)
+    return FileResponse(safe_path)
+
 
 def _delete_assignment_files(assignment_id: str, delete_s3: bool = True):
-    ih.libs["fileop_helper"].rm_dir(f"{ASSIGNMENT_DIR}{assignment_id}/")
+    ih.libs["fileop_helper"].rm_dir(os.path.join(ASSIGNMENT_DIR, assignment_id))
     if delete_s3:
         ih.libs["s3_rel"].delete_file(f"assignments/{assignment_id}/__assn_info.json")
+
+
+def _run_tests(assignment_id: str, submission_path: str):
+    return {}
+
+
+def _calculate_grade(assignment_id: str, test_results: Dict):
+    return 0
+
+
+async def _write_upload_file(upload_file: UploadFile, destination: str):
+    content = await upload_file.read()
+    with open(destination, "wb") as handle:
+        handle.write(content)
+
+
+def _safe_filename(filename: str) -> str:
+    keep = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789-_."
+    return "".join(ch if ch in keep else "_" for ch in filename)

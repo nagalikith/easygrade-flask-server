@@ -1,195 +1,82 @@
-from hashlib import sha256
-from flask import Blueprint, jsonify, request, make_response, current_app
-import import_helper as ih
-from flask_jwt_extended import (
-    jwt_required,
-    get_jwt_identity,
-    create_access_token,
-    get_jwt,
-    set_access_cookies,
-    unset_jwt_cookies
-)
-from functools import wraps
 import logging
-from datetime import timedelta
-from typing import Dict, Tuple, Any, Optional
-import passlib.hash as ph
-# Set up logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-sha256 = ph.pbkdf2_sha256
-bp = Blueprint('auth', __name__)
+from typing import Any, Dict
 
-class Config:
-    """Configuration class for authentication settings."""
-    CORS_ORIGIN = "http://localhost:3000"  # Replace with your frontend URL
-    JWT_ACCESS_EXPIRES = timedelta(hours=1)
-    COOKIE_SECURE = False  # Set to True in production
-    COOKIE_SAMESITE = 'Lax'
-    
-def error_handler(f):
-    """Decorator for handling errors in routes."""
-    @wraps(f)
-    def wrapped(*args, **kwargs):
-        try:
-            return f(*args, **kwargs)
-        except Exception as e:
-            logger.error(f"Error in {f.__name__}: {str(e)}")
-            return jsonify({"message": "An internal error occurred"}), 500
-    return wrapped
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+
+import import_helper as ih
+import passlib.hash as ph
+from py_lib.auth_utils import create_access_token, get_current_user_id
+
+sha256 = ph.pbkdf2_sha256
+
+logger = logging.getLogger(__name__)
+bp = APIRouter()
+
+
+class LoginPayload(BaseModel):
+    username: str
+    password: str
+
 
 def validate_login(username: str, password: str) -> Dict[str, Any]:
-    """
-    Validate user login credentials.
-    Returns dict with status and user_id if successful.
-    """
     try:
         hashed_passwd = ih.libs["db_userop"].get_hashed_password(username=username)
         is_valid = sha256.verify(password, hashed_passwd)
-
         if is_valid:
-          user_id = ih.libs["db_userop"].get_user_id(username)
-          return {"status": True, "user_id": user_id}
-        else:
-          return {"status": False}
-    except Exception as e:
-        logger.error(f"Login validation error: {str(e)}")
+            user_id = ih.libs["db_userop"].get_user_id(username)
+            return {"status": True, "user_id": user_id}
+        return {"status": False}
+    except Exception as exc:
+        logger.error("Login validation error: %s", exc)
         return {"status": False}
 
-@bp.route('/login', methods=['OPTIONS'])
-def handle_preflight_request():
-    """Handle CORS preflight requests."""
-    response = make_response()
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Methods': 'POST, OPTIONS',
-        'Access-Control-Allow-Headers': 'Content-Type, Authorization',
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    return response, 200
 
-@bp.route('/login', methods=['POST'])
-@error_handler
-def handle_login_request():
-    """Handle login POST requests."""
-    data = request.get_json()
-    
-    if not data:
-        return jsonify({"message": "No data provided"}), 400
-        
-    username = data.get('username')
-    password = data.get('password')
+def get_hash_pass(password: str) -> str:
+    return sha256.hash(password)
 
-    if not username or not password:
-        return jsonify({"message": "Username and password are required"}), 400
 
-    # Validate user credentials
-    validation_result = validate_login(username, password)
+def authenticate_using_password(user_id: str, password: str) -> bool:
+    try:
+        hashed_passwd = ih.libs["db_userop"].get_hashed_password(user_id=user_id)
+        return sha256.verify(password, hashed_passwd)
+    except Exception:
+        return False
 
-    if validation_result["status"]:
-        user_id = validation_result["user_id"]
-        
-        # Create access token with user data
-        access_token = create_access_token(
-            identity=user_id,
-            expires_delta=Config.JWT_ACCESS_EXPIRES
-        )
 
-        # Create response
-        response = make_response(jsonify({
-            "message": "Login successful",
-            "user": username,
-            "accessToken": access_token
-        }))
-        
-        
-        # Set CORS headers
-        response.headers.update({
-            'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-            'Access-Control-Allow-Credentials': 'true'
-        })
-        
-        return response, 200
+@bp.post("/login")
+def handle_login_request(payload: LoginPayload):
+    if not payload.username or not payload.password:
+        raise HTTPException(status_code=400, detail="Username and password are required")
 
-    return jsonify({"message": "Invalid credentials"}), 401
+    validation_result = validate_login(payload.username, payload.password)
+    if not validation_result["status"]:
+        raise HTTPException(status_code=401, detail="Invalid credentials")
 
-@bp.route('/logout', methods=['POST'])
-@jwt_required()
-@error_handler
-def handle_logout_request():
-    """Handle logout requests."""
-    response = make_response(jsonify({"message": "Logout successful"}))
-    
-    # Remove cookies
-    unset_jwt_cookies(response)
-    response.delete_cookie('user_id_cookie')
-    
-    # Set CORS headers
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    
-    return response, 200
+    access_token = create_access_token(identity=validation_result["user_id"])
+    return {
+        "message": "Login successful",
+        "user": payload.username,
+        "accessToken": access_token
+    }
 
-@bp.route('/api/user/profile', methods=['GET'])
-@jwt_required()
-@error_handler
-def get_user_profile():
-    """Get the current user's profile."""
-    current_user_id = get_jwt_identity()
-    claims = get_jwt()
-    
-    # Get user from database
-    user = User.query.get(current_user_id)
-    
+
+@bp.post("/logout")
+def handle_logout_request(user_id: str = Depends(get_current_user_id)):
+    return {"message": "Logout successful"}
+
+
+@bp.get("/api/user/profile")
+def get_user_profile(user_id: str = Depends(get_current_user_id)):
+    user = ih.libs["db_userop"].get_user_info(user_id=user_id, cols=["user_id", "username", "email"])
     if not user:
-        return jsonify({"message": "User not found"}), 404
-        
-    response = jsonify({
-        "id": str(user.id),
-        "username": user.username,
-        "email": user.email,
-        "roles": user.roles
-    })
-    
-    # Set CORS headers
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    
-    return response, 200
+        raise HTTPException(status_code=404, detail="User not found")
+    return {
+        "id": user[0],
+        "username": user[1],
+        "email": user[2]
+    }
 
-# Register error handlers
-@bp.errorhandler(400)
-def bad_request(error):
-    response = jsonify({"message": "Bad request"})
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    return response, 400
-
-@bp.errorhandler(401)
-def unauthorized(error):
-    response = jsonify({"message": "Unauthorized"})
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    return response, 401
-
-@bp.errorhandler(500)
-def internal_server_error(error):
-    response = jsonify({"message": "Internal server error"})
-    response.headers.update({
-        'Access-Control-Allow-Origin': Config.CORS_ORIGIN,
-        'Access-Control-Allow-Credentials': 'true'
-    })
-    return response, 500
 
 def is_admin(userid):
-  return (
-    userid == '0' * ih.get_env_val("HEX_ID_LENGTH")
-  ) 
+    return userid == '0' * ih.get_env_val("HEX_ID_LENGTH")
