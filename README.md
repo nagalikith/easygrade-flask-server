@@ -13,7 +13,6 @@ FastAPI backend for EasyGrade. It powers assignment creation, submission intake,
 - SQLAlchemy + PostgreSQL (data layer)
 - OpenCV + PyMuPDF (image/PDF processing)
 - PyJWT (token auth)
-- Requests (vision OCR HTTP integration)
 
 ## Quick Start
 Create required directories:
